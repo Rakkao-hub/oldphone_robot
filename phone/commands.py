@@ -119,13 +119,15 @@ def parse(text):
 
     if re.search("กลับหลังหัน|หันหลัง", t):
         return {"prog": "R180", "say": "กลับหลังหัน", "emotion": "neutral"}
-    if re.search("หมุนรอบ|หมุนตัว", t):
-        return {"prog": "R360", "say": "หมุนหนึ่งรอบ", "emotion": "happy"}
+    spin = re.search("หมุน.*รอบ|หมุนตัว", t)
+    if spin:
+        n = int(min(max(find_number(t) or 1, 1), 3))
+        return {"prog": f"R{360 * n}", "say": f"หมุน {n} รอบ", "emotion": "happy"}
 
     if "ถอย" in t:
         cm = min(to_cm(t, 20), 300)
         return {"prog": f"B{fmt(cm)}", "say": f"ถอยหลัง {fmt(cm)} เซนติเมตร", "emotion": "neutral"}
-    turn = re.search("(เลี้ยว|หัน|หมุน|ไป)(ทาง)?(ซ้าย|ขวา)", t)
+    turn = re.search("(เลี้ยว|หัน|หมุน|ไป|^)(ทาง)?(ซ้าย|ขวา)", t)
     if turn:
         deg = find_number(t) or 90
         deg = min(deg, 720)

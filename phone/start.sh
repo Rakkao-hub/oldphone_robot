@@ -3,10 +3,7 @@
 cd ~/robot
 termux-wake-lock 2>/dev/null
 pgrep -x sshd >/dev/null || sshd
-MODEL=${MODEL:-$HOME/models/qwen3-1.7b-q4_0.gguf}
-if ! pgrep -x llama-server >/dev/null && [ -f "$MODEL" ]; then
-  nohup llama-server -m "$MODEL" --jinja --host 127.0.0.1 --port 8081 -t 4 -c 2048 > ~/models/llama.log 2>&1 &
-fi
+pkill -x llama-server 2>/dev/null  # เลิกใช้ AI คุยเล่นแล้ว ปิดทิ้งถ้ายังค้าง
 pkill -f "^python brain.py"
 sleep 1
 nohup python brain.py > brain.log 2>&1 &

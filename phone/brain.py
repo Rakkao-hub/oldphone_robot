@@ -5,18 +5,15 @@
 #
 # หน้าที่
 #   - เสิร์ฟหน้าตาหุ่น (face.html) ให้ Chrome เปิดเต็มจอ  Chrome ฟังเสียง/พูด/แสดงหน้า
-#   - รับข้อความที่ได้ยินจาก Chrome -> แปลงเป็นคำสั่งรถ หรือส่งให้ AI ในเครื่องคุยตอบ
+#   - รับข้อความที่ได้ยินจาก Chrome -> แปลงเป็นคำสั่งขยับรถ (ไม่มีคุยเล่น เพื่อให้มือถือทำงานเบา)
 #   - สั่งบอร์ด ESP8266 ผ่าน WiFi (บอร์ดเรียก /api/hello มาบอกที่อยู่ตัวเองเป็นระยะ)
 import json
 import os
 import random
 import re
-import shutil
-import subprocess
 import sys
 import threading
 import time
-import urllib.error
 import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -30,19 +27,7 @@ ROBOT_NAME = os.environ.get("ROBOT_NAME", "แซน")
 NAME_RE = re.compile(os.environ.get("ROBOT_NAME_RE", r"แซ[่้]?น+(?:ด์)?|^แสน$|sand|san\b|zan\b"), re.I)
 GREETINGS = ["ว่าไงจ๊ะ แซนอยู่นี่", "จ้า เรียกแซนเหรอ", "แซนมาแล้ว มีอะไรให้ช่วยไหม", "ครับผม แซนพร้อมลุย"]
 CALL_WORDS = re.compile(r"สวัสดี|หวัดดี|ฮัลโหล|เฮ้|ไง|จ๋า|จ้า|ครับ|ค่ะ|คะ|นะ|หน่อย|อยู่ไหม|อยู่ไหน|ๆ|\s")
-LLM_URL = os.environ.get("LLM_URL", "http://127.0.0.1:8081/v1/chat/completions")
 STATE_FILE = os.path.join(HERE, ".robot_url")
-
-SYSTEM_PROMPT = (
-    f"คุณคือ{ROBOT_NAME} หุ่นยนต์รถคันเล็กที่มีมือถือเป็นสมองและหน้าตา นิสัยร่าเริง ขี้เล่น "
-    "ตอบเป็นภาษาไทยภาษาพูด สั้น ๆ 1-2 ประโยค เพราะคำตอบจะถูกอ่านออกเสียง "
-    "ห้ามใช้อีโมจิ สัญลักษณ์ หรือรายการข้อ ๆ "
-    "สิ่งที่คุณทำได้: เดินหน้า ถอยหลัง เลี้ยว เต้น วิ่งตามคน วิ่งเป็นรูปหัวใจ วงกลม สี่เหลี่ยม สามเหลี่ยม ดาว\n"
-    "ตัวอย่าง\n"
-    "คน: เป็นไงบ้าง\nแซน: สบายดีมากเลย แบตเต็ม ล้อพร้อมวิ่ง อยากให้แซนทำอะไรดี\n"
-    "คน: ชอบอะไร\nแซน: ชอบวิ่งเล่นกับเพื่อน ๆ แล้วก็ชอบวาดรูปหัวใจบนพื้นที่สุดเลย"
-)
-
 
 def log(*a):
     print(time.strftime("%H:%M:%S"), *a, flush=True)
@@ -181,72 +166,6 @@ def probe_robot_local():
         time.sleep(10)
 
 
-# ---------------------------------------------------------------- AI ในเครื่อง (llama.cpp)
-def llm_request(msgs, max_tokens, timeout=60):
-    body = json.dumps({
-        "messages": msgs, "max_tokens": max_tokens, "temperature": 0.7, "repeat_penalty": 1.2,
-        "cache_prompt": True,  # จำส่วนต้นที่ซ้ำกันไว้ ประโยคถัดไปตอบเร็วขึ้นมาก
-        "chat_template_kwargs": {"enable_thinking": False},  # Qwen3: ตอบเลยไม่ต้องคิดยาว
-    }).encode()
-    req = urllib.request.Request(LLM_URL, body, {"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())["choices"][0]["message"]["content"]
-
-
-EMOJI_RE = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D*#_`~>|]+")
-
-
-def clean(text):
-    """ตัดส่วนคิด อีโมจิ และสัญลักษณ์ที่อ่านออกเสียงไม่ได้"""
-    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
-    text = re.sub(r"^\s*แซน\s*[:：]\s*", "", text.strip())
-    return re.sub(r"\s+", " ", EMOJI_RE.sub("", text)).strip()
-
-
-LLM_MODEL = os.path.expanduser(os.environ.get("MODEL", "~/models/qwen3-1.7b-q4_0.gguf"))
-
-
-def keep_llm_alive():
-    """Android ชอบปิด llama-server ทิ้งเพราะใช้ CPU หนัก คอยเช็กทุก 20 วิ ถ้าตายก็เปิดใหม่"""
-    if not (shutil.which("llama-server") and os.path.isfile(LLM_MODEL)):
-        return
-    port = urllib.parse.urlparse(LLM_URL).port or 8081
-    while True:
-        try:
-            urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=3).read()
-        except urllib.error.HTTPError:
-            pass  # ตอบ 503 = กำลังโหลดโมเดล ยังไม่ตาย
-        except Exception:
-            log("AI คุยไม่ทำงาน กำลังเปิดใหม่...")
-            subprocess.Popen(["llama-server", "-m", LLM_MODEL, "--jinja", "--host", "127.0.0.1",
-                              "--port", str(port), "-t", "4", "-c", "2048"],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-            time.sleep(40)
-            warm_llm()
-        time.sleep(20)
-
-
-def warm_llm():
-    """ให้ AI อ่านคำสั่งตั้งต้นไว้ก่อน ประโยคแรกของผู้ใช้จะได้ไม่ต้องรอนาน"""
-    for _ in range(30):
-        try:
-            llm_request([{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": "สวัสดี"}], 1, 120)
-            log("AI คุยพร้อมแล้ว")
-            return
-        except Exception:
-            time.sleep(5)
-
-
-def ask_llm(text):
-    # ไม่ส่งบทสนทนาก่อนหน้า: มือถืออ่านข้อความได้ราว 10 โทเคน/วิ ยิ่งยาวยิ่งช้า
-    # ส่วนคำสั่งตั้งต้นที่ซ้ำทุกครั้ง llama.cpp จำไว้แล้ว (cache_prompt) จึงอ่านแค่ประโยคใหม่
-    msgs = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": text}]
-    reply = clean(llm_request(msgs, 48))
-    if not reply:
-        raise ValueError("AI ตอบว่างเปล่า")
-    return reply
-
-
 def hear(text):
     """ได้ยินข้อความ -> คืน {say, emotion}"""
     called = bool(NAME_RE.search(text))
@@ -254,7 +173,7 @@ def hear(text):
         text = NAME_RE.sub(" ", text).strip()
         if not CALL_WORDS.sub("", text):  # เรียกชื่อเฉย ๆ เช่น "แซน" "สวัสดีแซน"
             return {"say": random.choice(GREETINGS), "emotion": "happy"}
-    res = do_text(text)
+    res = do_text(text, called)
     if called and res["emotion"] != "sad":
         res["emotion"] = "happy"
     return res
@@ -264,7 +183,10 @@ last_cmd = {"op": None, "at": 0.0}
 NUMBER_ONLY = re.compile(r"^\s*[\d๐-๙.]+\s*(เซน(ติเมตร)?|ซม\.?|องศา|เมตร)?\s*$")
 
 
-def do_text(text):
+HELP = "แซนทำได้แค่ขยับนะ ลองพูดว่า เดินหน้า ถอยหลัง เลี้ยวซ้าย เต้น วาดรูปหัวใจ หรือตามมา"
+
+
+def do_text(text, called=False):
     # พูดตัวเลขตามหลังคำสั่ง เช่น "เลี้ยวซ้าย" ... "90" -> เลี้ยวซ้าย 90 องศา
     if NUMBER_ONLY.match(text) and last_cmd["op"] and time.time() - last_cmd["at"] < 15:
         text = {"F": "เดินหน้า", "B": "ถอยหลัง", "L": "เลี้ยวซ้าย", "R": "เลี้ยวขวา"}[last_cmd["op"]] + " " + text
@@ -285,11 +207,11 @@ def do_text(text):
         except Exception as e:
             log("สั่งรถไม่ได้:", e)
             return {"say": "ติดต่อล้อไม่ได้ เช็กว่าบอร์ดเปิดอยู่และต่อ WiFi มือถือหรือยัง", "emotion": "sad"}
-    try:
-        return {"say": ask_llm(text), "emotion": "happy"}
-    except Exception as e:
-        log("AI ไม่ตอบ:", e)
-        return {"say": "ยังคุยเล่นไม่ได้นะ ลองพูดว่า เดิน เลี้ยวซ้าย ถอยหลัง หรือวาดรูปหัวใจ", "emotion": "neutral"}
+    # ไม่ใช่คำสั่ง: ถ้าเรียกชื่อแซนมาด้วย บอกว่าทำอะไรได้บ้าง
+    # ถ้าไม่ได้เรียก (อาจเป็นเสียงคนคุยกันหรือทีวี) ทำหน้างงเงียบ ๆ ไม่พูดแทรก
+    if called:
+        return {"say": HELP, "emotion": "neutral"}
+    return {"say": "", "emotion": "confused"}
 
 
 # ---------------------------------------------------------------- เสียงพูด
@@ -410,8 +332,6 @@ class Handler(BaseHTTPRequestHandler):
 def main():
     threading.Thread(target=probe_robot_local, daemon=True).start()
     threading.Thread(target=follow_loop, daemon=True).start()
-    threading.Thread(target=warm_llm, daemon=True).start()
-    threading.Thread(target=keep_llm_alive, daemon=True).start()
     srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
     log(f"สมอง{ROBOT_NAME}พร้อมแล้ว เปิด Chrome ไปที่ http://localhost:{PORT}")
     log("รอบอร์ด ESP8266 เรียกเข้ามา..." if not robot.url else f"บอร์ดล่าสุด: {robot.url}")
