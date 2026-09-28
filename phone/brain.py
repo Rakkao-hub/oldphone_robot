@@ -1,0 +1,425 @@
+#!/usr/bin/env python3
+# brain.py : สมองหุ่นยนต์ รันใน Termux บนมือถือ Android (ใช้แต่ไลบรารีที่มากับ Python)
+#
+#   python brain.py            แล้วเปิด Chrome ไปที่ http://localhost:8080
+#
+# หน้าที่
+#   - เสิร์ฟหน้าตาหุ่น (face.html) ให้ Chrome เปิดเต็มจอ  Chrome ฟังเสียง/พูด/แสดงหน้า
+#   - รับข้อความที่ได้ยินจาก Chrome -> แปลงเป็นคำสั่งรถ หรือส่งให้ AI ในเครื่องคุยตอบ
+#   - สั่งบอร์ด ESP8266 ผ่าน WiFi (บอร์ดเรียก /api/hello มาบอกที่อยู่ตัวเองเป็นระยะ)
+import json
+import os
+import random
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import commands
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PORT = int(os.environ.get("BRAIN_PORT", "8080"))
+ROBOT_NAME = os.environ.get("ROBOT_NAME", "แซน")
+# คำที่ระบบฟังเสียงอาจสะกดชื่อออกมา (เรียกชื่อแล้วหุ่นจะหน้ายิ้ม)
+NAME_RE = re.compile(os.environ.get("ROBOT_NAME_RE", r"แซ[่้]?น+(?:ด์)?|^แสน$|sand|san\b|zan\b"), re.I)
+GREETINGS = ["ว่าไงจ๊ะ แซนอยู่นี่", "จ้า เรียกแซนเหรอ", "แซนมาแล้ว มีอะไรให้ช่วยไหม", "ครับผม แซนพร้อมลุย"]
+CALL_WORDS = re.compile(r"สวัสดี|หวัดดี|ฮัลโหล|เฮ้|ไง|จ๋า|จ้า|ครับ|ค่ะ|คะ|นะ|หน่อย|อยู่ไหม|อยู่ไหน|ๆ|\s")
+LLM_URL = os.environ.get("LLM_URL", "http://127.0.0.1:8081/v1/chat/completions")
+STATE_FILE = os.path.join(HERE, ".robot_url")
+
+SYSTEM_PROMPT = (
+    f"คุณคือ{ROBOT_NAME} หุ่นยนต์รถคันเล็กที่มีมือถือเป็นสมองและหน้าตา นิสัยร่าเริง ขี้เล่น "
+    "ตอบเป็นภาษาไทยภาษาพูด สั้น ๆ 1-2 ประโยค เพราะคำตอบจะถูกอ่านออกเสียง "
+    "ห้ามใช้อีโมจิ สัญลักษณ์ หรือรายการข้อ ๆ "
+    "สิ่งที่คุณทำได้: เดินหน้า ถอยหลัง เลี้ยว เต้น วิ่งตามคน วิ่งเป็นรูปหัวใจ วงกลม สี่เหลี่ยม สามเหลี่ยม ดาว\n"
+    "ตัวอย่าง\n"
+    "คน: เป็นไงบ้าง\nแซน: สบายดีมากเลย แบตเต็ม ล้อพร้อมวิ่ง อยากให้แซนทำอะไรดี\n"
+    "คน: ชอบอะไร\nแซน: ชอบวิ่งเล่นกับเพื่อน ๆ แล้วก็ชอบวาดรูปหัวใจบนพื้นที่สุดเลย"
+)
+
+
+def log(*a):
+    print(time.strftime("%H:%M:%S"), *a, flush=True)
+
+
+# ---------------------------------------------------------------- บอร์ด ESP8266
+class Robot:
+    def __init__(self):
+        self.url = os.environ.get("ROBOT_URL") or self._load()
+        self.last_seen = 0.0
+        self.lock = threading.Lock()
+
+    def _load(self):
+        try:
+            with open(STATE_FILE) as f:
+                return f.read().strip() or None
+        except OSError:
+            return None
+
+    def hello(self, ip):
+        url = f"http://{ip}"
+        if url != self.url:  # อย่าเชื่อทันที เช็กก่อนว่าเป็นบอร์ดหุ่นจริง (กันเครื่องอื่นใน WiFi มาหลอก)
+            try:
+                with urllib.request.urlopen(url + "/api/status", timeout=2) as r:
+                    if "running" not in json.loads(r.read()):
+                        return
+            except Exception:
+                return
+        if url != self.url:
+            log(f"เจอบอร์ดที่ {url}")
+            try:
+                with open(STATE_FILE, "w") as f:
+                    f.write(url)
+            except OSError:
+                pass
+        self.url = url
+        self.last_seen = time.time()
+
+    def _get(self, path, timeout=2.0):
+        if not self.url:
+            raise ConnectionError("ยังไม่เจอบอร์ด")
+        with urllib.request.urlopen(self.url + path, timeout=timeout) as r:
+            return json.loads(r.read() or b"{}")
+
+    def online(self):
+        if time.time() - self.last_seen < 45:
+            return True
+        try:
+            self._get("/api/status", timeout=1.0)
+            self.last_seen = time.time()
+            return True
+        except Exception:
+            return False
+
+    def run(self, prog):
+        with self.lock:
+            try:
+                return self._get("/api/run?p=" + urllib.parse.quote(prog))
+            except OSError:  # คำสั่งแรกหลังจอดนิ่งนาน ๆ บางทีหมดเวลา ลองอีกรอบ
+                return self._get("/api/run?p=" + urllib.parse.quote(prog), timeout=4)
+
+    def stop(self):
+        with self.lock:
+            return self._get("/api/stop")
+
+    def drive(self, d, speed=None):
+        q = f"/api/drive?d={d}" + (f"&s={int(speed)}" if speed else "")
+        return self._get(q, timeout=0.5)
+
+
+robot = Robot()
+
+
+# ---------------------------------------------------------------- โหมดตามหน้าคน
+# Chrome จับหน้าด้วยกล้องหน้า แล้วส่งตำแหน่งมาที่ /api/track ราว 8 ครั้งต่อวินาที
+#   x : -1 (ซ้ายของภาพ) .. 1 (ขวาของภาพ)   w : ความกว้างหน้าเทียบกับภาพ (ใกล้ = ใหญ่)
+FOLLOW_FLIP = os.environ.get("FOLLOW_FLIP") == "1"   # ถ้ารถหันหนีคน ให้ตั้งเป็น 1
+FOLLOW_W = float(os.environ.get("FOLLOW_W", "0.22"))   # ขนาดหน้าตอนระยะพอดี
+TURN_MIN = int(os.environ.get("TURN_MIN", "470"))      # แรงหมุนตอนหน้าเยื้องนิดเดียว
+TURN_MAX = int(os.environ.get("TURN_MAX", "620"))      # แรงหมุนตอนหน้าอยู่ขอบภาพ
+DEADBAND = 0.2
+
+
+class Follow:
+    on = False
+    found = False
+    x = 0.0
+    w = 0.0
+    at = 0.0
+
+
+def follow_step():
+    """ตัดสินใจ 1 ครั้ง คืน (ทิศ, แรง) หรือ None = หยุด"""
+    if not (Follow.found and time.time() - Follow.at < 0.5):
+        return None
+    x = -Follow.x if FOLLOW_FLIP else Follow.x
+    if abs(x) > DEADBAND:
+        k = min(1.0, (abs(x) - DEADBAND) / (1 - DEADBAND))
+        return ("L" if x < 0 else "R", TURN_MIN + (TURN_MAX - TURN_MIN) * k)
+    if Follow.w < FOLLOW_W * 0.8:
+        return ("F", None)
+    if Follow.w > FOLLOW_W * 1.5:
+        return ("B", None)
+    return None
+
+
+def follow_loop():
+    stopped = True
+    while True:
+        time.sleep(0.12)
+        if not Follow.on:
+            stopped = True
+            continue
+        step = follow_step()
+        try:
+            if step:
+                robot.drive(*step)
+                stopped = False
+            elif not stopped:
+                robot.stop()
+                stopped = True
+        except Exception:
+            pass
+
+
+def probe_robot_local():
+    """ถ้ายังไม่เจอบอร์ด ลอง http://robot.local ทุก 10 วิ (ใช้ได้เมื่ออยู่ WiFi บ้านเดียวกัน
+    ส่วนตอนมือถือเปิด Hotspot บอร์ดจะเรียก /api/hello มาเอง)"""
+    while True:
+        if not robot.online():
+            try:
+                with urllib.request.urlopen("http://robot.local/api/status", timeout=3) as r:
+                    robot.hello(json.loads(r.read())["ip"])
+            except Exception:
+                pass
+        time.sleep(10)
+
+
+# ---------------------------------------------------------------- AI ในเครื่อง (llama.cpp)
+def llm_request(msgs, max_tokens, timeout=60):
+    body = json.dumps({
+        "messages": msgs, "max_tokens": max_tokens, "temperature": 0.7, "repeat_penalty": 1.2,
+        "cache_prompt": True,  # จำส่วนต้นที่ซ้ำกันไว้ ประโยคถัดไปตอบเร็วขึ้นมาก
+        "chat_template_kwargs": {"enable_thinking": False},  # Qwen3: ตอบเลยไม่ต้องคิดยาว
+    }).encode()
+    req = urllib.request.Request(LLM_URL, body, {"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read())["choices"][0]["message"]["content"]
+
+
+EMOJI_RE = re.compile("[\U0001F000-\U0001FAFF\u2600-\u27BF\uFE0F\u200D*#_`~>|]+")
+
+
+def clean(text):
+    """ตัดส่วนคิด อีโมจิ และสัญลักษณ์ที่อ่านออกเสียงไม่ได้"""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.S)
+    text = re.sub(r"^\s*แซน\s*[:：]\s*", "", text.strip())
+    return re.sub(r"\s+", " ", EMOJI_RE.sub("", text)).strip()
+
+
+LLM_MODEL = os.path.expanduser(os.environ.get("MODEL", "~/models/qwen3-1.7b-q4_0.gguf"))
+
+
+def keep_llm_alive():
+    """Android ชอบปิด llama-server ทิ้งเพราะใช้ CPU หนัก คอยเช็กทุก 20 วิ ถ้าตายก็เปิดใหม่"""
+    if not (shutil.which("llama-server") and os.path.isfile(LLM_MODEL)):
+        return
+    port = urllib.parse.urlparse(LLM_URL).port or 8081
+    while True:
+        try:
+            urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=3).read()
+        except urllib.error.HTTPError:
+            pass  # ตอบ 503 = กำลังโหลดโมเดล ยังไม่ตาย
+        except Exception:
+            log("AI คุยไม่ทำงาน กำลังเปิดใหม่...")
+            subprocess.Popen(["llama-server", "-m", LLM_MODEL, "--jinja", "--host", "127.0.0.1",
+                              "--port", str(port), "-t", "4", "-c", "2048"],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            time.sleep(40)
+            warm_llm()
+        time.sleep(20)
+
+
+def warm_llm():
+    """ให้ AI อ่านคำสั่งตั้งต้นไว้ก่อน ประโยคแรกของผู้ใช้จะได้ไม่ต้องรอนาน"""
+    for _ in range(30):
+        try:
+            llm_request([{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": "สวัสดี"}], 1, 120)
+            log("AI คุยพร้อมแล้ว")
+            return
+        except Exception:
+            time.sleep(5)
+
+
+def ask_llm(text):
+    # ไม่ส่งบทสนทนาก่อนหน้า: มือถืออ่านข้อความได้ราว 10 โทเคน/วิ ยิ่งยาวยิ่งช้า
+    # ส่วนคำสั่งตั้งต้นที่ซ้ำทุกครั้ง llama.cpp จำไว้แล้ว (cache_prompt) จึงอ่านแค่ประโยคใหม่
+    msgs = [{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": text}]
+    reply = clean(llm_request(msgs, 48))
+    if not reply:
+        raise ValueError("AI ตอบว่างเปล่า")
+    return reply
+
+
+def hear(text):
+    """ได้ยินข้อความ -> คืน {say, emotion}"""
+    called = bool(NAME_RE.search(text))
+    if called:
+        text = NAME_RE.sub(" ", text).strip()
+        if not CALL_WORDS.sub("", text):  # เรียกชื่อเฉย ๆ เช่น "แซน" "สวัสดีแซน"
+            return {"say": random.choice(GREETINGS), "emotion": "happy"}
+    res = do_text(text)
+    if called and res["emotion"] != "sad":
+        res["emotion"] = "happy"
+    return res
+
+
+last_cmd = {"op": None, "at": 0.0}
+NUMBER_ONLY = re.compile(r"^\s*[\d๐-๙.]+\s*(เซน(ติเมตร)?|ซม\.?|องศา|เมตร)?\s*$")
+
+
+def do_text(text):
+    # พูดตัวเลขตามหลังคำสั่ง เช่น "เลี้ยวซ้าย" ... "90" -> เลี้ยวซ้าย 90 องศา
+    if NUMBER_ONLY.match(text) and last_cmd["op"] and time.time() - last_cmd["at"] < 15:
+        text = {"F": "เดินหน้า", "B": "ถอยหลัง", "L": "เลี้ยวซ้าย", "R": "เลี้ยวขวา"}[last_cmd["op"]] + " " + text
+    cmd = commands.parse(text)
+    if cmd and cmd.get("prog", " ")[0] in "FBLR" and " " not in cmd.get("prog", " "):
+        last_cmd.update(op=cmd["prog"][0], at=time.time())
+    if cmd:
+        Follow.on = bool(cmd.get("follow"))  # คำสั่งอื่นทุกอันเลิกโหมดตาม
+        try:
+            if cmd.get("stop"):
+                robot.stop()
+            elif Follow.on:
+                log("เริ่มโหมดตามหน้า")
+            else:
+                log("สั่งรถ:", cmd["prog"])
+                robot.run(cmd["prog"])
+            return {"say": cmd["say"], "emotion": cmd["emotion"]}
+        except Exception as e:
+            log("สั่งรถไม่ได้:", e)
+            return {"say": "ติดต่อล้อไม่ได้ เช็กว่าบอร์ดเปิดอยู่และต่อ WiFi มือถือหรือยัง", "emotion": "sad"}
+    try:
+        return {"say": ask_llm(text), "emotion": "happy"}
+    except Exception as e:
+        log("AI ไม่ตอบ:", e)
+        return {"say": "ยังคุยเล่นไม่ได้นะ ลองพูดว่า เดิน เลี้ยวซ้าย ถอยหลัง หรือวาดรูปหัวใจ", "emotion": "neutral"}
+
+
+# ---------------------------------------------------------------- เสียงพูด
+# มือถือเครื่องนี้ไม่มีเสียงอ่านภาษาไทยในเครื่อง จึงขอไฟล์เสียงจาก Google แปลภาษา (ต้องใช้เน็ต)
+# แล้วให้ Chrome เล่นเป็นไฟล์เสียงธรรมดา
+TTS_URL = "https://translate.google.com/translate_tts?ie=UTF-8&tl=th&client=tw-ob&q="
+tts_cache = {}
+
+
+def tts_chunks(text, limit=180):
+    """Google รับได้ครั้งละไม่เกินราว 200 ตัวอักษร ตัดตามช่องว่าง"""
+    chunks, cur = [], ""
+    for word in text.split():
+        if cur and len(cur) + len(word) + 1 > limit:
+            chunks.append(cur)
+            cur = ""
+        cur = f"{cur} {word}".strip()
+    return chunks + ([cur] if cur else [])
+
+
+def tts(text):
+    if text in tts_cache:
+        return tts_cache[text]
+    audio = b""
+    for chunk in tts_chunks(text):
+        req = urllib.request.Request(TTS_URL + urllib.parse.quote(chunk), headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            audio += r.read()  # ไฟล์ mp3 ต่อท้ายกันเล่นต่อเนื่องได้เลย
+    if len(tts_cache) > 50:
+        tts_cache.clear()
+    tts_cache[text] = audio
+    return audio
+
+
+# ---------------------------------------------------------------- เว็บเซิร์ฟเวอร์
+class Handler(BaseHTTPRequestHandler):
+    def log_message(self, *a):
+        pass
+
+    def send(self, code, body, ctype="application/json; charset=utf-8"):
+        if not isinstance(body, bytes):
+            body = json.dumps(body, ensure_ascii=False).encode() if ctype.startswith("application/json") else body.encode()
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def local_only(self):
+        if self.client_address[0] in ("127.0.0.1", "::1"):
+            return True
+        self.send(403, {"error": "local only"})
+        return False
+
+    def do_GET(self):
+        path, _, qs = self.path.partition("?")
+        if path in ("/", "/face.html"):
+            with open(os.path.join(HERE, "face.html"), "rb") as f:
+                self.send(200, f.read(), "text/html; charset=utf-8")
+        elif path == "/api/hello":  # บอร์ดเรียกมาเอง
+            robot.hello(self.client_address[0])
+            self.send(200, "brain-ok", "text/plain")
+        elif path == "/api/tts":
+            if not self.local_only():  # ให้เฉพาะ Chrome ในมือถือเอง ไม่เปิดเป็นทางผ่านให้เครื่องอื่น
+                return
+            text = urllib.parse.parse_qs(qs).get("q", [""])[0].strip()
+            try:
+                self.send(200, tts(text), "audio/mpeg")
+            except Exception as e:
+                log("ทำเสียงพูดไม่ได้:", e)
+                self.send(502, {"error": str(e)})
+        elif path == "/api/state":
+            self.send(200, {"robot": robot.url, "online": robot.online(), "name": ROBOT_NAME, "follow": Follow.on})
+        elif path.startswith("/vendor/") and ".." not in path:  # MediaPipe เก็บในเครื่อง ใช้ได้แม้ไม่มีเน็ต
+            fp = os.path.join(HERE, path.lstrip("/"))
+            if not os.path.isfile(fp):
+                return self.send(404, {"error": "not found"})
+            ctype = {".mjs": "text/javascript", ".js": "text/javascript",
+                     ".wasm": "application/wasm"}.get(os.path.splitext(fp)[1], "application/octet-stream")
+            with open(fp, "rb") as f:
+                self.send(200, f.read(), ctype)
+        else:
+            self.send(404, {"error": "not found"})
+
+    def do_POST(self):
+        if not self.local_only():  # คนอื่นใน WiFi เดียวกันสั่งรถแทนไม่ได้
+            return
+        n = int(self.headers.get("Content-Length") or 0)
+        data = json.loads(self.rfile.read(n) or b"{}")
+        if self.path == "/api/hear":
+            text = str(data.get("text", "")).strip()
+            log("ได้ยิน:", text)
+            res = hear(text) if text else {"say": "", "emotion": "neutral"}
+            log("ตอบ:", res["say"])
+            res["follow"] = Follow.on
+            self.send(200, res)
+        elif self.path == "/api/log":
+            log("[Chrome]", data.get("msg", ""))
+            self.send(200, {"ok": True})
+        elif self.path == "/api/track":
+            Follow.found = bool(data.get("found"))
+            Follow.x = float(data.get("x") or 0)
+            Follow.w = float(data.get("w") or 0)
+            Follow.at = time.time()
+            self.send(200, {"follow": Follow.on})
+        elif self.path == "/api/stop":
+            Follow.on = False
+            try:
+                robot.stop()
+                self.send(200, {"ok": True})
+            except Exception as e:
+                self.send(502, {"ok": False, "error": str(e)})
+        else:
+            self.send(404, {"error": "not found"})
+
+
+def main():
+    threading.Thread(target=probe_robot_local, daemon=True).start()
+    threading.Thread(target=follow_loop, daemon=True).start()
+    threading.Thread(target=warm_llm, daemon=True).start()
+    threading.Thread(target=keep_llm_alive, daemon=True).start()
+    srv = ThreadingHTTPServer(("0.0.0.0", PORT), Handler)
+    log(f"สมอง{ROBOT_NAME}พร้อมแล้ว เปิด Chrome ไปที่ http://localhost:{PORT}")
+    log("รอบอร์ด ESP8266 เรียกเข้ามา..." if not robot.url else f"บอร์ดล่าสุด: {robot.url}")
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

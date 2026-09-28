@@ -1,0 +1,11 @@
+# รหัส WiFi จริง
+firmware/robot_ai/secrets.h
+
+# ไฟล์ที่โหลด/สร้างขึ้นเอง
+phone/vendor/
+phone/.robot_url
+phone/*.log
+__pycache__/
+*.gguf
+.DS_Store
+build/
