@@ -33,6 +33,12 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 #cam { position: fixed; inset: 10px 12px auto auto; width: 120px; height: 90px; border-radius: 8px;
   opacity: .55; display: none; transform: scaleX(-1); }
 #cam.on { display: block; }
+#board { position: fixed; left: 16px; right: 16px; bottom: 56px; max-height: 38vh; overflow: hidden;
+  display: none; padding: 14px 18px; border: 1.5px solid var(--eye); border-radius: 14px;
+  background: rgba(60, 240, 255, .06); color: var(--text); text-align: center;
+  font-size: clamp(18px, 4.6vmin, 32px); line-height: 1.45; }
+#board.on { display: flex; flex-direction: column; justify-content: flex-end; }
+#board small { display: block; font-size: 13px; color: var(--soft); margin-bottom: 6px; }
 #start small { display: block; margin-top: 10px; font-size: 14px; color: var(--soft); }
 </style>
 </head>
@@ -40,6 +46,7 @@ canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
 <canvas id="c"></canvas>
 <div id="status"><span id="dot"></span><span id="stat">กำลังหาล้อ...</span></div>
 <div id="sub"></div>
+<div id="board"><small>โหมดพูดตาม · พูดว่า "พูดตามได้" ให้แซนพูด · "ยกเลิก" เพื่อออก</small><span id="boardText"></span></div>
 <canvas id="cam" width="160" height="120"></canvas>
 <button id="start">แตะเพื่อปลุกหุ่นยนต์<small>แตะหน้าจอระหว่างใช้งาน = สั่งรถหยุด</small></button>
 
@@ -62,7 +69,7 @@ const EMO = {
   confused:  { tilt: 0.5,  happy: 0, size: 0.92, lid: 0.1,  lx: 0.3,  ly: -0.2 },
   sleepy:    { tilt: 0.15, happy: 0, size: 1,    lid: 0.5,  lx: null, ly: 0.2 },
 };
-const cur = { tilt: 0, happy: 0, size: 1, lid: 0, lx: 0, ly: 0, blink: 1, mouth: 0 };
+const cur = { tilt: 0, happy: 0, size: 1, lid: 0, lx: 0, ly: 0, blink: 1, mouth: 0, bk: 0 };  // bk: 1 = มีกล่องพูดตาม ย่อหน้าหลบ
 const tgt = { ...cur };
 let emotion = 'neutral', emoTimer = 0, speaking = false;
 
@@ -179,9 +186,9 @@ function frame(now) {
     cur[k] += (tgt[k] - cur[k]) * Math.min(1, dt * speed);
   }
   ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
-  const u = Math.min(W * 0.5, H);
+  const u = Math.min(W * 0.5, H) * (1 - 0.42 * cur.bk);
   const ew = u * 0.34 * cur.size, eh = u * 0.46 * cur.size, gap = u * 0.2;
-  const cx = W / 2 + cur.lx * u * 0.12, cy = H * 0.46 + cur.ly * u * 0.1;
+  const cx = W / 2 + cur.lx * u * 0.12, cy = H * (0.46 - 0.2 * cur.bk) + cur.ly * u * 0.1;
   lctx.clearRect(0, 0, W, H);
   for (const side of [-1, 1]) {
     const persp = 1 + cur.lx * side * 0.08;  // ตาข้างที่มองไปจะดูใหญ่ขึ้นนิดหน่อย
@@ -355,11 +362,22 @@ async function handle(text) {
     res = { say: 'สมองใน Termux ไม่ตอบ ลองเช็กว่ายังรัน brain.py อยู่ไหม', emotion: 'sad' };
   }
   following = !!res.follow;
+  if ('board' in res) setBoard(res.board);
   setEmotion(res.emotion || 'neutral', 4000);
   show(res.say);
   await speak(res.say);
+  if (res.echo === false && $('#board').classList.contains('on')) boardTimer = setTimeout(() => setBoard(null), 2500);
   busy = false;
   wake();
+}
+
+// กล่องข้อความโหมดพูดตาม: text = ข้อความ (แสดง), null = ซ่อน
+let boardTimer = 0;
+function setBoard(text) {
+  clearTimeout(boardTimer);
+  $('#board').classList.toggle('on', text !== null);
+  tgt.bk = text !== null ? 1 : 0;
+  if (text !== null) $('#boardText').textContent = text || '...';
 }
 
 // ---------------------------------------------------------------- สถานะบอร์ด
@@ -370,6 +388,7 @@ async function poll() {
     $('#stat').textContent = s.online ? 'ล้อพร้อม' : 'ยังไม่เจอล้อ (ESP8266)';
     window.robotName = s.name;
     following = !!s.follow;
+    if (!s.echo && $('#board').classList.contains('on') && !busy) setBoard(null);  // หมดเวลาพูดตามเอง
     const btn = $('#start');
     if (btn) btn.firstChild.textContent = 'แตะเพื่อปลุก' + s.name;
   } catch (_) {
@@ -472,6 +491,7 @@ async function startEyes() {
 // แตะหน้าจอ = หยุดรถทันที
 cv.addEventListener('pointerdown', () => {
   following = false;
+  setBoard(null);
   fetch('/api/stop', { method: 'POST' }).catch(() => {});
   stopSpeaking();
   unlockAudio();

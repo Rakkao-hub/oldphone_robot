@@ -169,8 +169,58 @@ def probe_robot_local():
         time.sleep(10)
 
 
+# ---------------------------------------------------------------- โหมดพูดตาม
+# "พูดตาม" -> แซนตอบ "พร้อมฟัง" แล้วจดทุกประโยคที่ได้ยินขึ้นจอ (ไม่ขยับรถ)
+# "พูดตามได้" -> แซนพูดข้อความทั้งหมดที่จดไว้ แล้วออกจากโหมด
+# "ยกเลิก" (คำเดียว) หรือแตะจอ -> ออกจากโหมดโดยไม่พูด
+ECHO_START = re.compile(r"พูด\s*ตาม(?!\s*ได้)")
+ECHO_SAY = re.compile(r"พูด\s*ตาม\s*ได้(\s*แล้ว)?")
+ECHO_CANCEL = re.compile(r"^\s*(ยกเลิก|เลิก|หยุด|พอ)(พูดตาม)?\s*$")
+ECHO_IDLE = 120  # ไม่ได้ยินอะไรเลยนานเท่านี้ (วิ) ออกจากโหมดเอง
+
+
+class Echo:
+    on = False
+    words = []
+    at = 0.0
+
+
+def echo_text():
+    return " ".join(Echo.words)
+
+
+def echo_mode(text):
+    """อยู่ในโหมดพูดตาม: คืนคำตอบ หรือ None ถ้าไม่ได้อยู่ในโหมด"""
+    if Echo.on and time.time() - Echo.at > ECHO_IDLE:
+        Echo.on = False
+    if not Echo.on:
+        return None
+    Echo.at = time.time()
+    if ECHO_CANCEL.match(text):
+        Echo.on = False
+        return {"say": "เลิกพูดตามแล้ว", "emotion": "neutral", "board": None}
+    m = ECHO_SAY.search(text)
+    if m:
+        before = text[:m.start()].strip()  # เผื่อพูดต่อท้ายประโยคสุดท้ายในลมหายใจเดียว
+        if before:
+            Echo.words.append(before)
+        Echo.on = False
+        said = echo_text()
+        log("พูดตาม:", said)
+        return {"say": said or "ยังไม่ได้พูดอะไรให้แซนฟังเลยนะ", "emotion": "happy", "board": said or None}
+    Echo.words.append(text)
+    return {"say": "", "emotion": "listening", "board": echo_text()}
+
+
 def hear(text):
-    """ได้ยินข้อความ -> คืน {say, emotion}"""
+    """ได้ยินข้อความ -> คืน {say, emotion} (+ board = ข้อความบนจอโหมดพูดตาม, None = ซ่อน)"""
+    res = echo_mode(text)  # เช็กก่อน เพราะในโหมดนี้ทุกคำ (แม้แต่ "แซน" หรือ "เดินหน้า") คือข้อความที่ต้องจด
+    if res:
+        return res
+    if ECHO_START.search(text):
+        Echo.on, Echo.words, Echo.at = True, [], time.time()
+        log("เข้าโหมดพูดตาม")
+        return {"say": "พร้อมฟัง", "emotion": "happy", "board": ""}
     called = bool(NAME_RE.search(text))
     if called:
         text = NAME_RE.sub(" ", text).strip()
@@ -296,7 +346,8 @@ class Handler(BaseHTTPRequestHandler):
                 log("ทำเสียงพูดไม่ได้:", e)
                 self.send(502, {"error": str(e)})
         elif path == "/api/state":
-            self.send(200, {"robot": robot.url, "online": robot.online(), "name": ROBOT_NAME, "follow": Follow.on})
+            self.send(200, {"robot": robot.url, "online": robot.online(), "name": ROBOT_NAME, "follow": Follow.on,
+                            "echo": Echo.on and time.time() - Echo.at < ECHO_IDLE})
         elif path.startswith("/vendor/") and ".." not in path:  # MediaPipe เก็บในเครื่อง ใช้ได้แม้ไม่มีเน็ต
             fp = os.path.join(HERE, path.lstrip("/"))
             if not os.path.isfile(fp):
@@ -324,6 +375,7 @@ class Handler(BaseHTTPRequestHandler):
             res = hear(text) if text else {"say": "", "emotion": "neutral"}
             log("ตอบ:", res["say"])
             res["follow"] = Follow.on
+            res["echo"] = Echo.on
             self.send(200, res)
         elif self.path == "/api/log":
             log("[Chrome]", data.get("msg", ""))
@@ -336,6 +388,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send(200, {"follow": Follow.on})
         elif self.path == "/api/stop":
             Follow.on = False
+            Echo.on = False
             try:
                 robot.stop()
                 self.send(200, {"ok": True})
