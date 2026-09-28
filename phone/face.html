@@ -208,7 +208,7 @@ addEventListener('unhandledrejection', e => report('JS promise: ' + (e.reason &&
 // ---------------------------------------------------------------- คำบรรยายใต้จอ
 let subTimer = 0;
 function show(text, cls) {
-  if (cls !== 'heard') report('จอ: ' + text);
+  if (text && cls !== 'heard') report('จอ: ' + text);
   const s = $('#sub');
   s.textContent = text; s.className = cls || ''; s.style.opacity = 1;
   clearTimeout(subTimer);
@@ -281,7 +281,7 @@ function stopSpeaking() {
 
 // ---------------------------------------------------------------- ฟัง
 // Android ดัง "ติ๊ง" ทุกครั้งที่เริ่มเปิดไมค์ จึงเปิดไมค์ค้างไว้ (continuous) และฟังเฉพาะช่วงตื่น:
-// ตื่นเมื่อ แตะจอ / มีคนคุย / เห็นหน้าคนในกล้อง  ไม่มีอะไรเลย 30 วิ -> ง่วง ปิดไมค์ (เงียบ)
+// ตื่นเมื่อ แตะจอ / มีคนคุย / เห็นหน้าคนในกล้อง  ไม่มีอะไรเลย 2 นาที -> ง่วง ปิดไมค์ (เงียบ)
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, busy = false, awakeUntil = 0, retryAt = 0, micBlocked = false, recAliveAt = 0;
 
@@ -346,7 +346,7 @@ setInterval(() => {
 
 async function handle(text) {
   busy = true;
-  setEmotion('thinking');
+  setEmotion('listening');
   let res;
   try {
     const r = await fetch('/api/hear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
@@ -427,7 +427,8 @@ async function startEyes() {
   let lastTs = -1;
   const tick = () => {
     const now = performance.now();
-    if (video.readyState >= 2 && now - lastTs > 60) {
+    // โหมดตามต้องไว (~14 ครั้ง/วิ) ส่วนแค่ให้ตามองตาม ~5 ครั้ง/วิ ก็พอ ประหยัดแบตและ CPU
+    if (video.readyState >= 2 && now - lastTs > (following ? 70 : 200)) {
       lastTs = now;
       const vw = video.videoWidth, vh = video.videoHeight;
       const dets = detector.detectForVideo(video, now).detections;

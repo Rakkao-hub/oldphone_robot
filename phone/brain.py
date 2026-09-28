@@ -94,8 +94,11 @@ class Robot:
             return self._get("/api/stop")
 
     def drive(self, d, speed=None):
+        """ใช้เฉพาะโหมดตาม: เช็ก Follow.on ภายใต้ lock กันส่งแทรกหลังผู้ใช้สั่งท่าอื่นไปแล้ว"""
         q = f"/api/drive?d={d}" + (f"&s={int(speed)}" if speed else "")
-        return self._get(q, timeout=0.5)
+        with self.lock:
+            if Follow.on:
+                return self._get(q, timeout=0.5)
 
 
 robot = Robot()
@@ -267,6 +270,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send(403, {"error": "local only"})
         return False
 
+    def same_origin(self):
+        """เว็บไซต์อื่นที่เปิดใน Chrome มือถือก็ส่งมาจาก localhost ได้ จึงเช็กว่ามาจากหน้าแซนเองจริง"""
+        origin = self.headers.get("Origin")
+        if origin in (None, f"http://localhost:{PORT}", f"http://127.0.0.1:{PORT}"):
+            return True
+        self.send(403, {"error": "bad origin"})
+        return False
+
     def do_GET(self):
         path, _, qs = self.path.partition("?")
         if path in ("/", "/face.html"):
@@ -298,10 +309,15 @@ class Handler(BaseHTTPRequestHandler):
             self.send(404, {"error": "not found"})
 
     def do_POST(self):
-        if not self.local_only():  # คนอื่นใน WiFi เดียวกันสั่งรถแทนไม่ได้
+        if not (self.local_only() and self.same_origin()):  # เครื่องอื่นใน WiFi / เว็บอื่น สั่งรถแทนไม่ได้
             return
-        n = int(self.headers.get("Content-Length") or 0)
-        data = json.loads(self.rfile.read(n) or b"{}")
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+            data = json.loads(self.rfile.read(n) or b"{}")
+            if not isinstance(data, dict):
+                raise ValueError
+        except ValueError:
+            return self.send(400, {"error": "bad json"})
         if self.path == "/api/hear":
             text = str(data.get("text", "")).strip()
             log("ได้ยิน:", text)
