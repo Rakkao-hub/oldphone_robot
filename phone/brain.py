@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# brain.py : สมองหุ่นยนต์ รันใน Termux บนมือถือ Android (ใช้แต่ไลบรารีที่มากับ Python)
+# brain.py : สมองหุ่นยนต์ รันใน Termux บนมือถือ Android (ใช้แต่ไลบรารีที่มากับ Python ยกเว้น edge-tts ที่มีหรือไม่มีก็ได้)
 #
 #   python brain.py            แล้วเปิด Chrome ไปที่ http://localhost:8080
 #
@@ -25,7 +25,7 @@ PORT = int(os.environ.get("BRAIN_PORT", "8080"))
 ROBOT_NAME = os.environ.get("ROBOT_NAME", "แซน")
 # คำที่ระบบฟังเสียงอาจสะกดชื่อออกมา (เรียกชื่อแล้วหุ่นจะหน้ายิ้ม)
 NAME_RE = re.compile(os.environ.get("ROBOT_NAME_RE", r"แซ[่้]?น+(?:ด์)?|^แสน$|sand|san\b|zan\b"), re.I)
-GREETINGS = ["ว่าไงจ๊ะ แซนอยู่นี่", "จ้า เรียกแซนเหรอ", "แซนมาแล้ว มีอะไรให้ช่วยไหม", "ครับผม แซนพร้อมลุย"]
+GREETINGS = ["ว่าไง แซนอยู่นี่", "จ้า เรียกแซนเหรอ", "แซนมาแล้ว มีอะไรให้ช่วยไหม", "แซนพร้อมลุยแล้ว"]
 CALL_WORDS = re.compile(r"สวัสดี|หวัดดี|ฮัลโหล|เฮ้|ไง|จ๋า|จ้า|ครับ|ค่ะ|คะ|นะ|หน่อย|อยู่ไหม|อยู่ไหน|ๆ|\s")
 STATE_FILE = os.path.join(HERE, ".robot_url")
 
@@ -104,11 +104,11 @@ class Robot:
 robot = Robot()
 
 
-# ---------------------------------------------------------------- โหมดตามหน้าคน
+# ---------------------------------------------------------------- โหมดหันหน้าตามคน ("ตามมา")
 # Chrome จับหน้าด้วยกล้องหน้า แล้วส่งตำแหน่งมาที่ /api/track ราว 8 ครั้งต่อวินาที
 #   x : -1 (ซ้ายของภาพ) .. 1 (ขวาของภาพ)   w : ความกว้างหน้าเทียบกับภาพ (ใกล้ = ใหญ่)
+# หมุนอยู่กับที่ให้หน้าคนอยู่กลางภาพเท่านั้น ไม่เดินหน้า/ถอยหลัง
 FOLLOW_FLIP = os.environ.get("FOLLOW_FLIP") == "1"   # ถ้ารถหันหนีคน ให้ตั้งเป็น 1
-FOLLOW_W = float(os.environ.get("FOLLOW_W", "0.22"))   # ขนาดหน้าตอนระยะพอดี
 TURN_MIN = int(os.environ.get("TURN_MIN", "470"))      # แรงหมุนตอนหน้าเยื้องนิดเดียว
 TURN_MAX = int(os.environ.get("TURN_MAX", "620"))      # แรงหมุนตอนหน้าอยู่ขอบภาพ
 DEADBAND = 0.2
@@ -130,11 +130,7 @@ def follow_step():
     if abs(x) > DEADBAND:
         k = min(1.0, (abs(x) - DEADBAND) / (1 - DEADBAND))
         return ("L" if x < 0 else "R", TURN_MIN + (TURN_MAX - TURN_MIN) * k)
-    if Follow.w < FOLLOW_W * 0.8:
-        return ("F", None)
-    if Follow.w > FOLLOW_W * 1.5:
-        return ("B", None)
-    return None
+    return None  # หน้าอยู่กลางภาพแล้ว หยุดนิ่ง
 
 
 def follow_loop():
@@ -207,16 +203,59 @@ def echo_mode(text):
         Echo.on = False
         said = echo_text()
         log("พูดตาม:", said)
-        return {"say": said or "ยังไม่ได้พูดอะไรให้แซนฟังเลยนะ", "emotion": "happy", "board": said or None}
+        if not said:
+            return {"say": "ยังไม่ได้พูดอะไรให้แซนฟังเลยนะ", "emotion": "happy", "board": None}
+        return {"say": said, "emotion": "happy", "board": said, "raw": True}
     Echo.words.append(text)
     return {"say": "", "emotion": "listening", "board": echo_text()}
+
+
+def polite(text):
+    """เติมคำลงท้ายให้ฟังเป็นคนพูด: ครับ (เสียงผู้ชาย) / ค่ะ, คะ (เสียงผู้หญิง)"""
+    text = text.strip()
+    if not text or re.search(r"(ครับ|ค่ะ|คะ|จ้า|จ๊ะ|จ้ะ)$", text):
+        return text
+    female = "Premwadee" in TTS_VOICE
+    # เขียนติดกันไม่เว้นวรรค ไม่งั้นเสียง AI จะเว้นจังหวะก่อน "ครับ" จนฟังขาด ๆ
+    if re.search(r"(นะ|ไหม|หรือยัง|อะไร|ไหน|สิ)$", text):  # ท้ายแบบนี้ผู้หญิงใช้ "คะ"
+        return text + ("คะ" if female else "ครับ")
+    return text + ("ค่ะ" if female else "ครับ")
 
 
 def hear(text):
     """ได้ยินข้อความ -> คืน {say, emotion} (+ board = ข้อความบนจอโหมดพูดตาม, None = ซ่อน)"""
     res = echo_mode(text)  # เช็กก่อน เพราะในโหมดนี้ทุกคำ (แม้แต่ "แซน" หรือ "เดินหน้า") คือข้อความที่ต้องจด
     if res:
+        if not res.pop("raw", False):  # ข้อความที่ผู้ใช้ให้พูดตาม ห้ามเติมคำลงท้าย
+            res["say"] = polite(res["say"])
         return res
+    res = understand(text)
+    if not res.pop("raw", False):  # คำอุทานไม่เติม ครับ/ค่ะ
+        res["say"] = polite(res["say"])
+    return res
+
+
+# ---------------------------------------------------------------- อุทาน
+SOUNDS_DIR = os.path.join(HERE, "sounds")
+SOUND_TYPES = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg", ".m4a": "audio/mp4"}
+
+
+def sound_file(key):
+    for ext in SOUND_TYPES:
+        if os.path.isfile(os.path.join(SOUNDS_DIR, key + ext)):
+            return key + ext
+    return None
+
+
+def exclaim_reply(cmd):
+    """มีไฟล์เสียง -> ให้ Chrome เล่นไฟล์ / ไม่มี -> แซนพูดคำอุทานเอง"""
+    f = sound_file(cmd["exclaim"])
+    if f:
+        return {"say": "", "emotion": cmd["emotion"], "sound": {"type": "file", "url": "/sounds/" + urllib.parse.quote(f)}, "raw": True}
+    return {"say": cmd["say"], "emotion": cmd["emotion"], "raw": True}
+
+
+def understand(text):
     if ECHO_START.search(text):
         Echo.on, Echo.words, Echo.at = True, [], time.time()
         log("เข้าโหมดพูดตาม")
@@ -236,16 +275,40 @@ last_cmd = {"op": None, "at": 0.0}
 NUMBER_ONLY = re.compile(r"^\s*[\d๐-๙.]+\s*(เซน(ติเมตร)?|ซม\.?|องศา|เมตร)?\s*$")
 
 
-HELP = "แซนทำได้แค่ขยับนะ ลองพูดว่า เดินหน้า ถอยหลัง เลี้ยวซ้าย เต้น วาดรูปหัวใจ หรือตามมา"
+HELP = "แซนยังทำได้แค่ขยับนะ ลองบอกให้เดินหน้า ถอยหลัง เลี้ยวซ้าย เต้น วาดรูปหัวใจ หรือตามมาดูสิ"
+
+
+MAX_CMD_LEN = 40  # ประโยคยาวกว่านี้ (ไม่นับช่องว่าง) ส่วนใหญ่เป็นเสียงคนคุยกันรอบ ๆ ไม่ใช่สั่งแซน
 
 
 def do_text(text, called=False):
+    # เสียงคนคุยกันยาว ๆ ไม่เอามาสั่งรถ (ยกเว้น "หยุด" ใช้ได้เสมอ และถ้าเรียกชื่อแซนนำหน้าก็ยังสั่งได้)
+    if not called and len(re.sub(r"\s", "", text)) > MAX_CMD_LEN and not re.search("หยุด|เบรก", text):
+        return {"say": "", "emotion": "confused"}
     # พูดตัวเลขตามหลังคำสั่ง เช่น "เลี้ยวซ้าย" ... "90" -> เลี้ยวซ้าย 90 องศา
     if NUMBER_ONLY.match(text) and last_cmd["op"] and time.time() - last_cmd["at"] < 15:
         text = {"F": "เดินหน้า", "B": "ถอยหลัง", "L": "เลี้ยวซ้าย", "R": "เลี้ยวขวา"}[last_cmd["op"]] + " " + text
     cmd = commands.parse(text)
     if cmd and cmd.get("prog", " ")[0] in "FBLR" and " " not in cmd.get("prog", " "):
         last_cmd.update(op=cmd["prog"][0], at=time.time())
+    if cmd and cmd.get("exclaim"):
+        log("อุทาน:", cmd["exclaim"])
+        return exclaim_reply(cmd)
+    if cmd and cmd.get("sound"):  # เสียงพิเศษ (ผิวปาก / อุทาน)
+        log("เสียงพิเศษ:", cmd["sound"])
+        return {"say": "", "emotion": cmd["emotion"], "sound": cmd["sound"]}
+    if cmd and cmd.get("script"):  # แนะนำตัว: ส่งทั้งสคริปต์ให้ Chrome เล่นทีละท่อน (พูด + สั่งท่าผ่าน /api/move)
+        Follow.on = False
+        steps = []
+        for line, emo, prog in cmd["script"]:
+            if line.startswith("!"):  # ท่อนอุทาน เช่น "!wow"
+                r = exclaim_reply(commands.exclaim(line[1:].strip()))
+                steps.append({"say": r["say"], "emotion": emo, "prog": prog, "sound": r.get("sound")})
+            else:
+                steps.append({"say": polite(line), "emotion": emo, "prog": prog})
+        log("แนะนำตัว", len(steps), "ท่อน")
+        threading.Thread(target=lambda: [tts_safe(st["say"]) for st in steps if st["say"]], daemon=True).start()
+        return {"say": "", "emotion": cmd["emotion"], "script": steps}
     if cmd:
         Follow.on = bool(cmd.get("follow"))  # คำสั่งอื่นทุกอันเลิกโหมดตาม
         try:
@@ -256,10 +319,14 @@ def do_text(text, called=False):
             else:
                 log("สั่งรถ:", cmd["prog"])
                 robot.run(cmd["prog"])
-            return {"say": cmd["say"], "emotion": cmd["emotion"]}
+            res = {"say": cmd["say"], "emotion": cmd["emotion"]}
+            f = cmd.get("music") and sound_file(cmd["music"])
+            if f:  # เพลงประกอบ (เช่น เต้น + sounds/dance.mp3) เล่นจนรถทำท่าจบ
+                res["music"] = "/sounds/" + urllib.parse.quote(f)
+            return res
         except Exception as e:
             log("สั่งรถไม่ได้:", e)
-            return {"say": "ติดต่อล้อไม่ได้ เช็กว่าบอร์ดเปิดอยู่และต่อ WiFi มือถือหรือยัง", "emotion": "sad"}
+            return {"say": "แย่จัง ติดต่อล้อไม่ได้ ช่วยเช็กหน่อยว่ารถเปิดอยู่ไหม", "emotion": "sad"}
     # ไม่ใช่คำสั่ง: ถ้าเรียกชื่อแซนมาด้วย บอกว่าทำอะไรได้บ้าง
     # ถ้าไม่ได้เรียก (อาจเป็นเสียงคนคุยกันหรือทีวี) ทำหน้างงเงียบ ๆ ไม่พูดแทรก
     if called:
@@ -268,8 +335,35 @@ def do_text(text, called=False):
 
 
 # ---------------------------------------------------------------- เสียงพูด
-# มือถือเครื่องนี้ไม่มีเสียงอ่านภาษาไทยในเครื่อง จึงขอไฟล์เสียงจาก Google แปลภาษา (ต้องใช้เน็ต)
-# แล้วให้ Chrome เล่นเป็นไฟล์เสียงธรรมดา
+# มือถือเครื่องนี้ไม่มีเสียงอ่านภาษาไทยในเครื่อง จึงขอไฟล์เสียงจากเน็ต แล้วให้ Chrome เล่นเป็นไฟล์เสียงธรรมดา
+#   1) เสียง AI ของ Microsoft Edge (ชัดและเป็นธรรมชาติที่สุด) ต้องติดตั้งก่อน: pip install edge-tts
+#   2) ถ้าไม่ได้ติดตั้งหรือใช้ไม่ได้ ใช้เสียง Google แปลภาษาแทน
+# เปลี่ยนเสียงได้ด้วย TTS_VOICE: th-TH-NiwatNeural (ผู้ชาย) / th-TH-PremwadeeNeural (ผู้หญิง)
+# TTS_RATE ปรับความเร็ว เช่น +10% หรือ -10%, TTS_PITCH ปรับเสียงสูงต่ำ เช่น +20Hz ให้ฟังเป็นหุ่นตัวเล็ก
+TTS_VOICE = os.environ.get("TTS_VOICE", "th-TH-NiwatNeural")
+TTS_RATE = os.environ.get("TTS_RATE", "+5%")
+TTS_PITCH = os.environ.get("TTS_PITCH", "+8Hz")
+try:
+    import asyncio
+    import edge_tts
+except ImportError:
+    edge_tts = None
+    log("ไม่มี edge-tts ใช้เสียง Google แทน (ติดตั้ง: pip install edge-tts)")
+
+
+def tts_edge(text, rate=None):
+    async def run():
+        audio = b""
+        async for part in edge_tts.Communicate(text, TTS_VOICE, rate=rate or TTS_RATE, pitch=TTS_PITCH).stream():
+            if part["type"] == "audio":
+                audio += part["data"]
+        return audio
+    audio = asyncio.run(asyncio.wait_for(run(), timeout=10))
+    if not audio:
+        raise RuntimeError("edge-tts ไม่ส่งเสียงกลับมา")
+    return audio
+
+
 TTS_URL = "https://translate.google.com/translate_tts?ie=UTF-8&tl=th&client=tw-ob&q="
 tts_cache = {}
 
@@ -285,17 +379,38 @@ def tts_chunks(text, limit=180):
     return chunks + ([cur] if cur else [])
 
 
-def tts(text):
-    if text in tts_cache:
-        return tts_cache[text]
+def tts_google(text):
     audio = b""
     for chunk in tts_chunks(text):
         req = urllib.request.Request(TTS_URL + urllib.parse.quote(chunk), headers={"User-Agent": "Mozilla/5.0"})
         with urllib.request.urlopen(req, timeout=8) as r:
             audio += r.read()  # ไฟล์ mp3 ต่อท้ายกันเล่นต่อเนื่องได้เลย
+    return audio
+
+
+def tts_safe(text):
+    """ทำเสียงเก็บไว้ล่วงหน้า (ท่อนถัดไปจะได้พูดต่อได้ทันที) error ก็ไม่เป็นไร"""
+    try:
+        tts(text)
+    except Exception:
+        pass
+
+
+def tts(text, rate=None):
+    key = (text, rate)
+    if key in tts_cache:
+        return tts_cache[key]
+    audio = None
+    if edge_tts:
+        try:
+            audio = tts_edge(text, rate)
+        except Exception as e:
+            log("เสียง Edge ใช้ไม่ได้ ใช้เสียง Google แทน:", e)
+    if audio is None:
+        audio = tts_google(text)
     if len(tts_cache) > 50:
         tts_cache.clear()
-    tts_cache[text] = audio
+    tts_cache[key] = audio
     return audio
 
 
@@ -312,7 +427,10 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
-        self.wfile.write(body)
+        try:
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # Chrome ยกเลิกเอง (เช่นแตะหยุดตอนกำลังโหลดเสียง) ไม่ต้องทำอะไร
 
     def local_only(self):
         if self.client_address[0] in ("127.0.0.1", "::1"):
@@ -339,15 +457,28 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/tts":
             if not self.local_only():  # ให้เฉพาะ Chrome ในมือถือเอง ไม่เปิดเป็นทางผ่านให้เครื่องอื่น
                 return
-            text = urllib.parse.parse_qs(qs).get("q", [""])[0].strip()
+            q = urllib.parse.parse_qs(qs)
+            text = q.get("q", [""])[0].strip()
             try:
                 self.send(200, tts(text), "audio/mpeg")
             except Exception as e:
                 log("ทำเสียงพูดไม่ได้:", e)
                 self.send(502, {"error": str(e)})
+        elif path == "/api/robot":  # รถกำลังทำท่าอยู่ไหม (สคริปต์แนะนำตัวใช้รอท่าจบ)
+            try:
+                self.send(200, {"running": bool(robot._get("/api/status", timeout=1.5).get("running"))})
+            except Exception:
+                self.send(200, {"running": False, "offline": True})
         elif path == "/api/state":
             self.send(200, {"robot": robot.url, "online": robot.online(), "name": ROBOT_NAME, "follow": Follow.on,
                             "echo": Echo.on and time.time() - Echo.at < ECHO_IDLE})
+        elif path.startswith("/sounds/") and ".." not in path:  # ไฟล์เสียงอุทาน
+            fp = os.path.join(SOUNDS_DIR, os.path.basename(urllib.parse.unquote(path)))
+            ctype = SOUND_TYPES.get(os.path.splitext(fp)[1].lower())
+            if not (ctype and os.path.isfile(fp)):
+                return self.send(404, {"error": "not found"})
+            with open(fp, "rb") as f:
+                self.send(200, f.read(), ctype)
         elif path.startswith("/vendor/") and ".." not in path:  # MediaPipe เก็บในเครื่อง ใช้ได้แม้ไม่มีเน็ต
             fp = os.path.join(HERE, path.lstrip("/"))
             if not os.path.isfile(fp):
@@ -377,6 +508,16 @@ class Handler(BaseHTTPRequestHandler):
             res["follow"] = Follow.on
             res["echo"] = Echo.on
             self.send(200, res)
+        elif self.path == "/api/move":  # สคริปต์แนะนำตัวสั่งท่า
+            prog = str(data.get("prog", "")).strip()
+            try:
+                if prog:
+                    log("สั่งรถ:", prog)
+                    robot.run(prog)
+                self.send(200, {"ok": True})
+            except Exception as e:
+                log("สั่งรถไม่ได้:", e)
+                self.send(502, {"ok": False, "error": str(e)})
         elif self.path == "/api/log":
             log("[Chrome]", data.get("msg", ""))
             self.send(200, {"ok": True})

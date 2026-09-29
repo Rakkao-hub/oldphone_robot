@@ -1,0 +1,4 @@
+{
+  "task.saveBeforeRun": "always",
+  "files.exclude": { "**/__pycache__": true }
+}

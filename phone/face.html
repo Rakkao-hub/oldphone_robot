@@ -1,504 +1,774 @@
 <!doctype html>
 <html lang="th">
+
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#05070A">
-<title>หน้าหุ่นยนต์</title>
-<link rel="icon" href="data:,">
-<style>
-:root {
-  --bg: #05070A;
-  --eye: #3CF0FF;
-  --text: #CFEFF4;
-  --soft: #5E7A80;
-  --ok: #3DDC84;
-  --bad: #FF5A5F;
-}
-* { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
-  font-family: "Sukhumvit Set", "Noto Sans Thai", system-ui, sans-serif; overflow: hidden;
-  -webkit-tap-highlight-color: transparent; user-select: none; }
-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-#status { position: fixed; top: 12px; left: 16px; font-size: 13px; color: var(--soft);
-  display: flex; align-items: center; gap: 8px; }
-#dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); }
-#dot.on { background: var(--ok); }
-#sub { position: fixed; left: 16px; right: 16px; bottom: 14px; text-align: center;
-  font-size: clamp(15px, 3.4vmin, 24px); line-height: 1.4; min-height: 1.4em;
-  transition: opacity .4s; }
-#sub.heard { color: var(--soft); }
-#start { position: fixed; inset: 0; display: grid; place-items: center; background: var(--bg);
-  border: 0; color: var(--eye); font: inherit; font-size: clamp(20px, 5vmin, 34px); cursor: pointer; }
-#cam { position: fixed; inset: 10px 12px auto auto; width: 120px; height: 90px; border-radius: 8px;
-  opacity: .55; display: none; transform: scaleX(-1); }
-#cam.on { display: block; }
-#board { position: fixed; left: 16px; right: 16px; bottom: 56px; max-height: 38vh; overflow: hidden;
-  display: none; padding: 14px 18px; border: 1.5px solid var(--eye); border-radius: 14px;
-  background: rgba(60, 240, 255, .06); color: var(--text); text-align: center;
-  font-size: clamp(18px, 4.6vmin, 32px); line-height: 1.45; }
-#board.on { display: flex; flex-direction: column; justify-content: flex-end; }
-#board small { display: block; font-size: 13px; color: var(--soft); margin-bottom: 6px; }
-#start small { display: block; margin-top: 10px; font-size: 14px; color: var(--soft); }
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#05070A">
+  <title>หน้าหุ่นยนต์</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      --bg: #05070A;
+      --eye: #3CF0FF;
+      --text: #CFEFF4;
+      --soft: #5E7A80;
+      --ok: #3DDC84;
+      --bad: #FF5A5F;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Sukhumvit Set", "Noto Sans Thai", system-ui, sans-serif;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    canvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #status {
+      position: fixed;
+      top: 12px;
+      left: 16px;
+      font-size: 13px;
+      color: var(--soft);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    #dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--bad);
+    }
+
+    #dot.on {
+      background: var(--ok);
+    }
+
+    #sub {
+      position: fixed;
+      left: 16px;
+      right: 16px;
+      bottom: 14px;
+      text-align: center;
+      font-size: clamp(15px, 3.4vmin, 24px);
+      line-height: 1.4;
+      min-height: 1.4em;
+      transition: opacity .4s;
+    }
+
+    #sub.heard {
+      color: var(--soft);
+    }
+
+    #start {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: var(--bg);
+      border: 0;
+      color: var(--eye);
+      font: inherit;
+      font-size: clamp(20px, 5vmin, 34px);
+      cursor: pointer;
+    }
+
+    #cam {
+      position: fixed;
+      inset: 10px 12px auto auto;
+      width: 120px;
+      height: 90px;
+      border-radius: 8px;
+      opacity: .55;
+      display: none;
+      transform: scaleX(-1);
+    }
+
+    #cam.on {
+      display: block;
+    }
+
+    #board {
+      position: fixed;
+      left: 16px;
+      right: 16px;
+      bottom: 56px;
+      max-height: 38vh;
+      overflow: hidden;
+      display: none;
+      padding: 14px 18px;
+      border: 1.5px solid var(--eye);
+      border-radius: 14px;
+      background: rgba(60, 240, 255, .06);
+      color: var(--text);
+      text-align: center;
+      font-size: clamp(18px, 4.6vmin, 32px);
+      line-height: 1.45;
+    }
+
+    #board.on {
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+    }
+
+    #board small {
+      display: block;
+      font-size: 13px;
+      color: var(--soft);
+      margin-bottom: 6px;
+    }
+
+    #start small {
+      display: block;
+      margin-top: 10px;
+      font-size: 14px;
+      color: var(--soft);
+    }
+  </style>
 </head>
+
 <body>
-<canvas id="c"></canvas>
-<div id="status"><span id="dot"></span><span id="stat">กำลังหาล้อ...</span></div>
-<div id="sub"></div>
-<div id="board"><small>โหมดพูดตาม · พูดว่า "พูดตามได้" ให้แซนพูด · "ยกเลิก" เพื่อออก</small><span id="boardText"></span></div>
-<canvas id="cam" width="160" height="120"></canvas>
-<button id="start">แตะเพื่อปลุกหุ่นยนต์<small>แตะหน้าจอระหว่างใช้งาน = สั่งรถหยุด</small></button>
+  <canvas id="c"></canvas>
+  <div id="status"><span id="dot"></span><span id="stat">กำลังหาล้อ...</span></div>
+  <div id="sub"></div>
+  <div id="board"><small>โหมดพูดตาม · พูดว่า "พูดตามได้" ให้แซนพูด · "ยกเลิก" เพื่อออก</small><span
+      id="boardText"></span></div>
+  <canvas id="cam" width="160" height="120"></canvas>
+  <button id="start">แตะเพื่อปลุกหุ่นยนต์<small>แตะหน้าจอระหว่างใช้งาน = สั่งรถหยุด</small></button>
 
-<script>
-'use strict';
-const $ = s => document.querySelector(s);
-const cv = $('#c'), ctx = cv.getContext('2d');
-const EYE = getComputedStyle(document.documentElement).getPropertyValue('--eye').trim();
-const BG = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+  <script>
+    'use strict';
+    const $ = s => document.querySelector(s);
+    const cv = $('#c'), ctx = cv.getContext('2d');
+    const EYE = getComputedStyle(document.documentElement).getPropertyValue('--eye').trim();
+    const BG = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
 
-// ---------------------------------------------------------------- หน้าตา
-const EMO = {
-  neutral:   { tilt: 0,    happy: 0, size: 1,    lid: 0,    lx: null, ly: null },
-  happy:     { tilt: 0,    happy: 1, size: 1,    lid: 0,    lx: null, ly: null },
-  sad:       { tilt: 1,    happy: 0, size: 0.95, lid: 0.12, lx: null, ly: 0.35 },
-  angry:     { tilt: -1,   happy: 0, size: 1,    lid: 0.05, lx: null, ly: null },
-  surprised: { tilt: 0,    happy: 0, size: 1.22, lid: 0,    lx: 0,    ly: 0 },
-  thinking:  { tilt: 0.3,  happy: 0, size: 0.95, lid: 0.18, lx: 0.6,  ly: -0.55 },
-  listening: { tilt: -0.2, happy: 0, size: 1.06, lid: 0,    lx: null, ly: null },
-  confused:  { tilt: 0.5,  happy: 0, size: 0.92, lid: 0.1,  lx: 0.3,  ly: -0.2 },
-  sleepy:    { tilt: 0.15, happy: 0, size: 1,    lid: 0.5,  lx: null, ly: 0.2 },
-};
-const cur = { tilt: 0, happy: 0, size: 1, lid: 0, lx: 0, ly: 0, blink: 1, mouth: 0, bk: 0 };  // bk: 1 = มีกล่องพูดตาม ย่อหน้าหลบ
-const tgt = { ...cur };
-let emotion = 'neutral', emoTimer = 0, speaking = false;
-
-function setEmotion(name, holdMs) {
-  emotion = EMO[name] ? name : 'neutral';
-  const e = EMO[emotion];
-  Object.assign(tgt, { tilt: e.tilt, happy: e.happy, size: e.size, lid: e.lid });
-  if (e.lx !== null) tgt.lx = e.lx;
-  if (e.ly !== null) tgt.ly = e.ly;
-  clearTimeout(emoTimer);
-  if (holdMs) emoTimer = setTimeout(() => setEmotion('neutral'), holdMs);
-}
-
-// กะพริบตา และกลอกตาไปมาเอง
-let nextBlink = 0, nextLook = 0;
-function idle(now) {
-  if (now > nextBlink) {
-    tgt.blink = 0.06;
-    setTimeout(() => (tgt.blink = 1), 110);
-    if (Math.random() < 0.2) setTimeout(() => { tgt.blink = 0.06; setTimeout(() => (tgt.blink = 1), 110); }, 260);
-    nextBlink = now + 2000 + Math.random() * 4000;
-  }
-  if (now > nextLook && EMO[emotion].lx === null && now - faceSeenAt > 1500) {
-    const center = Math.random() < 0.45;
-    tgt.lx = center ? 0 : (Math.random() * 2 - 1) * 0.7;
-    tgt.ly = center ? 0 : (Math.random() * 2 - 1) * 0.35;
-    nextLook = now + 1200 + Math.random() * 2800;
-  }
-  if (speaking) tgt.mouth = voiceLevel();
-  else tgt.mouth = 0;
-}
-
-function roundRect(x, y, w, h, r, c = ctx) {
-  const ctx = c;
-  r = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-// วาดตาลงเลเยอร์แยก แล้วตัดเปลือกตาออก (destination-out) ก่อนแปะพร้อมแสงเรือง
-// แสงจึงเรืองตามรูปตาที่เหลือจริง ไม่มีขอบดำของเปลือกตาโผล่
-const layer = document.createElement('canvas'), lctx = layer.getContext('2d');
-
-function drawEye(cx, cy, w, h, side) {
-  const ctx = lctx;
-  const hh = h * cur.blink;
-  const top = cy - hh / 2, bot = cy + hh / 2, l = cx - w / 2, r = cx + w / 2;
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.fillStyle = EYE;
-  roundRect(l, top, w, hh, w * 0.28, ctx);
-  ctx.fill();
-  ctx.globalCompositeOperation = 'destination-out';
-  ctx.fillStyle = '#000';
-
-  // เปลือกตาบน : tilt > 0 ตาเศร้า (หางตาตก), tilt < 0 ตาโกรธ (หัวตาตก)
-  const outer = cur.lid + Math.max(0, cur.tilt) * 0.38;
-  const inner = cur.lid + Math.max(0, -cur.tilt) * 0.38;
-  const yl = top + hh * (side < 0 ? outer : inner);
-  const yr = top + hh * (side < 0 ? inner : outer);
-  ctx.beginPath();
-  ctx.moveTo(l - 4, top - 4); ctx.lineTo(r + 4, top - 4);
-  ctx.lineTo(r + 4, yr); ctx.lineTo(l - 4, yl);
-  ctx.closePath(); ctx.fill();
-
-  // ตายิ้ม : เอาวงรีสีพื้นหลังบังครึ่งล่าง เหลือเป็นรูป ^
-  if (cur.happy > 0.02) {
-    ctx.beginPath();
-    ctx.ellipse(cx, bot + hh * 0.18, w * 0.8, hh * 0.62 * cur.happy, 0, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.globalCompositeOperation = 'source-over';
-}
-
-function drawMouth(cx, cy, u) {
-  ctx.shadowColor = EYE; ctx.shadowBlur = u * 0.04;
-  if (cur.mouth > 0.03) {
-    const w = u * 0.16, h = u * (0.015 + cur.mouth * 0.085);
-    ctx.fillStyle = EYE;
-    roundRect(cx - w / 2, cy - h / 2, w, h, h / 2);
-    ctx.fill();
-  } else if (cur.happy > 0.3) {
-    ctx.strokeStyle = EYE; ctx.lineWidth = u * 0.018; ctx.lineCap = 'round';
-    ctx.globalAlpha = Math.min(1, (cur.happy - 0.3) * 2);
-    ctx.beginPath();
-    ctx.arc(cx, cy - u * 0.05, u * 0.07, Math.PI * 0.2, Math.PI * 0.8);
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-  }
-  ctx.shadowBlur = 0;
-}
-
-let W = 0, H = 0;
-function resize() {
-  const dpr = window.devicePixelRatio || 1;
-  W = innerWidth; H = innerHeight;
-  cv.width = layer.width = W * dpr; cv.height = layer.height = H * dpr;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-}
-addEventListener('resize', resize);
-resize();
-
-let last = performance.now();
-function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
-  idle(now);
-  for (const k in cur) {
-    const speed = k === 'blink' ? 40 : k === 'mouth' ? 22 : 9;
-    cur[k] += (tgt[k] - cur[k]) * Math.min(1, dt * speed);
-  }
-  ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
-  const u = Math.min(W * 0.5, H) * (1 - 0.42 * cur.bk);
-  const ew = u * 0.34 * cur.size, eh = u * 0.46 * cur.size, gap = u * 0.2;
-  const cx = W / 2 + cur.lx * u * 0.12, cy = H * (0.46 - 0.2 * cur.bk) + cur.ly * u * 0.1;
-  lctx.clearRect(0, 0, W, H);
-  for (const side of [-1, 1]) {
-    const persp = 1 + cur.lx * side * 0.08;  // ตาข้างที่มองไปจะดูใหญ่ขึ้นนิดหน่อย
-    drawEye(cx + side * (ew / 2 + gap / 2), cy, ew * persp, eh * persp, side);
-  }
-  ctx.save();
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.shadowColor = EYE; ctx.shadowBlur = ew * 0.25 * (window.devicePixelRatio || 1);
-  ctx.drawImage(layer, 0, 0);
-  ctx.restore();
-  drawMouth(cx, cy + eh * 0.5 + u * 0.12, u);
-  requestAnimationFrame(frame);
-}
-requestAnimationFrame(frame);
-
-// ---------------------------------------------------------------- ส่งข้อความ/error ไปเขียนใน brain.log
-function report(msg) {
-  fetch('/api/log', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ msg: String(msg).slice(0, 500) }) }).catch(() => {});
-}
-addEventListener('error', e => report('JS error: ' + e.message + ' @' + e.lineno));
-addEventListener('unhandledrejection', e => report('JS promise: ' + (e.reason && (e.reason.stack || e.reason))));
-
-// ---------------------------------------------------------------- คำบรรยายใต้จอ
-let subTimer = 0;
-function show(text, cls) {
-  if (text && cls !== 'heard') report('จอ: ' + text);
-  const s = $('#sub');
-  s.textContent = text; s.className = cls || ''; s.style.opacity = 1;
-  clearTimeout(subTimer);
-  subTimer = setTimeout(() => (s.style.opacity = 0), 6000);
-}
-
-// ---------------------------------------------------------------- พูด
-// เล่นไฟล์เสียงจาก brain.py (/api/tts) ปากขยับตามความดังของเสียงจริง
-// ถ้าไม่มีเน็ต ค่อยลองเสียงอ่านของ Chrome แทน
-const voice = new Audio();
-let audioCtx = null, analyser = null, level = new Uint8Array(256);
-
-function unlockAudio() {  // ต้องเรียกตอนผู้ใช้แตะจอ Chrome ถึงยอมให้เล่นเสียงทีหลัง
-  if (audioCtx) return;
-  try {
-    audioCtx = new AudioContext();
-    analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 512;
-    audioCtx.createMediaElementSource(voice).connect(analyser);
-    analyser.connect(audioCtx.destination);
-  } catch (e) { report('AudioContext: ' + e); }
-}
-
-function voiceLevel() {
-  if (!analyser) return 0.3 + Math.random() * 0.7;
-  analyser.getByteTimeDomainData(level);
-  let sum = 0;
-  for (const v of level) sum += (v - 128) * (v - 128);
-  return Math.min(1, Math.sqrt(sum / level.length) / 28);
-}
-
-function speakBrowser(text) {
-  return new Promise(resolve => {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'th-TH';
-    let done = false;
-    const finish = () => { if (!done) { done = true; resolve(); } };
-    u.onend = finish;
-    u.onerror = e => { report('เสียงอ่านของ Chrome ใช้ไม่ได้: ' + e.error); finish(); };
-    setTimeout(finish, 1500 + text.length * 110);
-    speechSynthesis.speak(u);
-  });
-}
-
-function speak(text) {
-  return new Promise(resolve => {
-    if (!text) return resolve();
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true; speaking = false;
-      voice.onended = voice.onerror = null;
-      resolve();
+    // ---------------------------------------------------------------- หน้าตา
+    const EMO = {
+      neutral: { tilt: 0, happy: 0, size: 1, lid: 0, lx: null, ly: null },
+      happy: { tilt: 0, happy: 1, size: 1, lid: 0, lx: null, ly: null },
+      sad: { tilt: 1, happy: 0, size: 0.95, lid: 0.12, lx: null, ly: 0.35 },
+      angry: { tilt: -1, happy: 0, size: 1, lid: 0.05, lx: null, ly: null },
+      surprised: { tilt: 0, happy: 0, size: 1.22, lid: 0, lx: 0, ly: 0 },
+      thinking: { tilt: 0.3, happy: 0, size: 0.95, lid: 0.18, lx: 0.6, ly: -0.55 },
+      listening: { tilt: -0.2, happy: 0, size: 1.06, lid: 0, lx: null, ly: null },
+      confused: { tilt: 0.5, happy: 0, size: 0.92, lid: 0.1, lx: 0.3, ly: -0.2 },
+      sleepy: { tilt: 0.15, happy: 0, size: 1, lid: 0.5, lx: null, ly: 0.2 },
     };
-    speaking = true;
-    if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-    voice.onended = finish;
-    voice.onerror = () => { report('โหลดเสียงพูดไม่ได้ ลองเสียงของ Chrome'); speakBrowser(text).then(finish); };
-    voice.src = '/api/tts?q=' + encodeURIComponent(text);
-    voice.play().catch(e => { report('เล่นเสียงไม่ได้: ' + e.name); speakBrowser(text).then(finish); });
-    setTimeout(finish, 4000 + text.length * 150);  // กันค้าง
-  });
-}
+    const cur = { tilt: 0, happy: 0, size: 1, lid: 0, lx: 0, ly: 0, blink: 1, mouth: 0, bk: 0, mo: 0 };  // bk: 1 = มีกล่องพูดตาม ย่อหน้าหลบ, mo: 1 = ปากห่อ (ผิวปาก)
+    const tgt = { ...cur };
+    let emotion = 'neutral', emoTimer = 0, speaking = false;
 
-function stopSpeaking() {
-  voice.pause();
-  speechSynthesis.cancel();
-  if (voice.onended) voice.onended();
-}
-
-// ---------------------------------------------------------------- ฟัง
-// Android ดัง "ติ๊ง" ทุกครั้งที่เริ่มเปิดไมค์ จึงเปิดไมค์ค้างไว้ (continuous) และฟังเฉพาะช่วงตื่น:
-// ตื่นเมื่อ แตะจอ / มีคนคุย / เห็นหน้าคนในกล้อง  ไม่มีอะไรเลย 2 นาที -> ง่วง ปิดไมค์ (เงียบ)
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let rec = null, busy = false, awakeUntil = 0, retryAt = 0, micBlocked = false, recAliveAt = 0;
-
-// ตัดตัวฟังทิ้งทันที ไม่รอ onend (Chrome บน Android บางทีไม่ส่ง onend มา ทำให้ไม่ได้เปิดไมค์ใหม่อีกเลย)
-function dropRec(why) {
-  const r = rec;
-  rec = null;
-  retryAt = Math.max(retryAt, performance.now() + 400);
-  if (r) { r.onresult = r.onerror = r.onend = null; try { r.abort(); } catch (_) {} }
-  if (why) report('ไมค์: ' + why);
-}
-
-const AWAKE_MS = 120000;  // ไม่มีใครคุยหรือเห็นหน้า 2 นาที -> ง่วง ปิดไมค์
-const PAUSE_MS = 900;     // เงียบเกินนี้ถึงถือว่าพูดจบประโยค
-function wake(ms = AWAKE_MS) { awakeUntil = Math.max(awakeUntil, performance.now() + ms); }
-
-function listen() {
-  const now = performance.now();
-  if (!SR || micBlocked || rec || busy || speaking || now < retryAt || now > awakeUntil) return;
-  const me = rec = new SR();
-  rec.lang = 'th-TH'; rec.interimResults = true; rec.continuous = true;
-  recAliveAt = now;
-  // ระบบฟังเสียงชอบตัดประโยคตอนเว้นจังหวะ ("เดินหน้า ... 50") จึงเก็บทุกท่อนไว้
-  // แล้วรอให้เงียบ PAUSE_MS ก่อนค่อยส่งทั้งประโยค
-  let said = '', timer = 0;
-  rec.onresult = e => {
-    let interim = '';
-    for (let i = e.resultIndex; i < e.results.length; i++) {
-      const t = e.results[i][0].transcript;
-      if (e.results[i].isFinal) said = (said + ' ' + t).trim();
-      else interim += t;
+    function setEmotion(name, holdMs) {
+      emotion = EMO[name] ? name : 'neutral';
+      const e = EMO[emotion];
+      Object.assign(tgt, { tilt: e.tilt, happy: e.happy, size: e.size, lid: e.lid });
+      if (e.lx !== null) tgt.lx = e.lx;
+      if (e.ly !== null) tgt.ly = e.ly;
+      clearTimeout(emoTimer);
+      if (holdMs) emoTimer = setTimeout(() => setEmotion('neutral'), holdMs);
     }
-    show((said + ' ' + interim).trim(), 'heard');
-    recAliveAt = performance.now();
-    wake();
-    clearTimeout(timer);
-    timer = setTimeout(() => {
-      if (!said) return;
-      const t = said; said = '';
-      if (rec === me) dropRec();
-      handle(t);
-    }, interim ? PAUSE_MS * 2 : PAUSE_MS);
-  };
-  rec.onerror = e => {
-    if (e.error !== 'no-speech' && e.error !== 'aborted') report('ไมค์ error: ' + e.error);
-    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { show('ยังไม่ได้อนุญาตให้ใช้ไมค์'); micBlocked = true; }
-    else if (e.error === 'network') { show('ระบบฟังเสียงต้องใช้อินเทอร์เน็ต'); retryAt = performance.now() + 5000; }
-  };
-  rec.onend = () => { if (rec === me) dropRec(); };
-  try { rec.start(); } catch (e) { dropRec('เปิดไม่ได้ ' + e.name); retryAt = now + 1000; }
-}
 
-setInterval(() => {
-  const asleep = performance.now() > awakeUntil && !busy && !speaking;
-  if (asleep && rec) dropRec();
-  // ตัวฟังค้าง: เปิดอยู่แต่เงียบไป 15 วิ (ปกติ Android ปิดเองเร็วกว่านี้) -> เปิดใหม่
-  if (rec && performance.now() - recAliveAt > 15000) dropRec('ค้าง เปิดใหม่');
-  if (asleep && emotion === 'neutral') setEmotion('sleepy');
-  if (!asleep && emotion === 'sleepy') setEmotion('neutral');
-  listen();
-}, 500);
+    // กะพริบตา และกลอกตาไปมาเอง
+    let nextBlink = 0, nextLook = 0;
+    function idle(now) {
+      if (now > nextBlink) {
+        tgt.blink = 0.06;
+        setTimeout(() => (tgt.blink = 1), 110);
+        if (Math.random() < 0.2) setTimeout(() => { tgt.blink = 0.06; setTimeout(() => (tgt.blink = 1), 110); }, 260);
+        nextBlink = now + 2000 + Math.random() * 4000;
+      }
+      if (now > nextLook && EMO[emotion].lx === null && now - faceSeenAt > 1500) {
+        const center = Math.random() < 0.45;
+        tgt.lx = center ? 0 : (Math.random() * 2 - 1) * 0.7;
+        tgt.ly = center ? 0 : (Math.random() * 2 - 1) * 0.35;
+        nextLook = now + 1200 + Math.random() * 2800;
+      }
+      if (speaking) tgt.mouth = voiceLevel();
+      else tgt.mouth = 0;
+    }
 
-async function handle(text) {
-  busy = true;
-  setEmotion('listening');
-  let res;
-  try {
-    const r = await fetch('/api/hear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
-    res = await r.json();
-  } catch (_) {
-    res = { say: 'สมองใน Termux ไม่ตอบ ลองเช็กว่ายังรัน brain.py อยู่ไหม', emotion: 'sad' };
-  }
-  following = !!res.follow;
-  if ('board' in res) setBoard(res.board);
-  setEmotion(res.emotion || 'neutral', 4000);
-  show(res.say);
-  await speak(res.say);
-  if (res.echo === false && $('#board').classList.contains('on')) boardTimer = setTimeout(() => setBoard(null), 2500);
-  busy = false;
-  wake();
-}
+    function roundRect(x, y, w, h, r, c = ctx) {
+      const ctx = c;
+      r = Math.min(r, w / 2, h / 2);
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
 
-// กล่องข้อความโหมดพูดตาม: text = ข้อความ (แสดง), null = ซ่อน
-let boardTimer = 0;
-function setBoard(text) {
-  clearTimeout(boardTimer);
-  $('#board').classList.toggle('on', text !== null);
-  tgt.bk = text !== null ? 1 : 0;
-  if (text !== null) $('#boardText').textContent = text || '...';
-}
+    // วาดตาลงเลเยอร์แยก แล้วตัดเปลือกตาออก (destination-out) ก่อนแปะพร้อมแสงเรือง
+    // แสงจึงเรืองตามรูปตาที่เหลือจริง ไม่มีขอบดำของเปลือกตาโผล่
+    const layer = document.createElement('canvas'), lctx = layer.getContext('2d');
 
-// ---------------------------------------------------------------- สถานะบอร์ด
-async function poll() {
-  try {
-    const s = await (await fetch('/api/state')).json();
-    $('#dot').classList.toggle('on', s.online);
-    $('#stat').textContent = s.online ? 'ล้อพร้อม' : 'ยังไม่เจอล้อ (ESP8266)';
-    window.robotName = s.name;
-    following = !!s.follow;
-    if (!s.echo && $('#board').classList.contains('on') && !busy) setBoard(null);  // หมดเวลาพูดตามเอง
-    const btn = $('#start');
-    if (btn) btn.firstChild.textContent = 'แตะเพื่อปลุก' + s.name;
-  } catch (_) {
-    $('#dot').classList.remove('on');
-    $('#stat').textContent = 'สมองไม่ตอบ (brain.py)';
-  }
-}
-poll(); setInterval(poll, 3000);
+    function drawEye(cx, cy, w, h, side) {
+      const ctx = lctx;
+      const hh = h * cur.blink;
+      const top = cy - hh / 2, bot = cy + hh / 2, l = cx - w / 2, r = cx + w / 2;
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.fillStyle = EYE;
+      roundRect(l, top, w, hh, w * 0.28, ctx);
+      ctx.fill();
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.fillStyle = '#000';
 
-// ---------------------------------------------------------------- เริ่ม
-let wakeLock = null;
-async function keepAwake() {
-  try { wakeLock = await navigator.wakeLock.request('screen'); } catch (_) {}
-}
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+      // เปลือกตาบน : tilt > 0 ตาเศร้า (หางตาตก), tilt < 0 ตาโกรธ (หัวตาตก)
+      const outer = cur.lid + Math.max(0, cur.tilt) * 0.38;
+      const inner = cur.lid + Math.max(0, -cur.tilt) * 0.38;
+      const yl = top + hh * (side < 0 ? outer : inner);
+      const yr = top + hh * (side < 0 ? inner : outer);
+      ctx.beginPath();
+      ctx.moveTo(l - 4, top - 4); ctx.lineTo(r + 4, top - 4);
+      ctx.lineTo(r + 4, yr); ctx.lineTo(l - 4, yl);
+      ctx.closePath(); ctx.fill();
 
-$('#start').addEventListener('click', async () => {
-  $('#start').remove();
-  try { await document.documentElement.requestFullscreen(); } catch (_) {}
-  keepAwake();
-  unlockAudio();
-  wake();
-  setEmotion('happy', 3000);
-  const hi = 'สวัสดี ฉันชื่อ' + (window.robotName || 'หุ่นยนต์') + ' สั่งให้ฉันเดินหน้า เลี้ยว หรือวาดรูปหัวใจได้เลย';
-  show(hi);
-  if (!SR) show('Chrome นี้ฟังเสียงไม่ได้ ลองอัปเดต Chrome');
-  startEyes();
-  await speak(hi);
-});
+      // ตายิ้ม : เอาวงรีสีพื้นหลังบังครึ่งล่าง เหลือเป็นรูป ^
+      if (cur.happy > 0.02) {
+        ctx.beginPath();
+        ctx.ellipse(cx, bot + hh * 0.18, w * 0.8, hh * 0.62 * cur.happy, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
 
-// ---------------------------------------------------------------- ตา: กล้องหน้า + MediaPipe จับหน้า
-// ตามองตามหน้าคนตลอด / โหมดตาม (พูด "ตามมา") ส่งตำแหน่งหน้าให้ brain.py สั่งล้อ
-let following = false, faceSeenAt = -1e9, lastTrack = 0;
-const video = document.createElement('video');
-video.muted = true; video.playsInline = true;
-const camCv = $('#cam'), camCtx = camCv.getContext('2d');
+    function drawMouth(cx, cy, u) {
+      ctx.shadowColor = EYE; ctx.shadowBlur = u * 0.04;
+      if (cur.mo > 0.05) {  // ปากห่อผิวปาก: วงกลมเล็ก ๆ
+        ctx.strokeStyle = EYE; ctx.lineWidth = u * 0.018; ctx.globalAlpha = Math.min(1, cur.mo * 1.5);
+        ctx.beginPath();
+        ctx.arc(cx + u * 0.03, cy, u * (0.018 + 0.012 * cur.mo), 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      } else if (cur.mouth > 0.03) {
+        const w = u * 0.16, h = u * (0.015 + cur.mouth * 0.085);
+        ctx.fillStyle = EYE;
+        roundRect(cx - w / 2, cy - h / 2, w, h, h / 2);
+        ctx.fill();
+      } else if (cur.happy > 0.3) {
+        ctx.strokeStyle = EYE; ctx.lineWidth = u * 0.018; ctx.lineCap = 'round';
+        ctx.globalAlpha = Math.min(1, (cur.happy - 0.3) * 2);
+        ctx.beginPath();
+        ctx.arc(cx, cy - u * 0.05, u * 0.07, Math.PI * 0.2, Math.PI * 0.8);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      ctx.shadowBlur = 0;
+    }
 
-async function startEyes() {
-  let detector;
-  try {
-    video.srcObject = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false });
-    await video.play();
-    const { FilesetResolver, FaceDetector } = await import('/vendor/vision_bundle.mjs');
-    const files = await FilesetResolver.forVisionTasks('/vendor/wasm');
-    const make = delegate => FaceDetector.createFromOptions(files, {
-      baseOptions: { modelAssetPath: '/vendor/face.tflite', delegate },
-      runningMode: 'VIDEO', minDetectionConfidence: 0.6 });
-    detector = await make('GPU').catch(e => { report('GPU ใช้ไม่ได้ ใช้ CPU แทน: ' + e); return make('CPU'); });
-    report('ตาพร้อม กล้อง ' + video.videoWidth + 'x' + video.videoHeight);
-  } catch (e) {
-    show('เปิดตา (กล้อง) ไม่ได้: ' + (e.message || e.name));
-    return;
-  }
-  let lastTs = -1;
-  const tick = () => {
-    const now = performance.now();
-    // โหมดตามต้องไว (~14 ครั้ง/วิ) ส่วนแค่ให้ตามองตาม ~5 ครั้ง/วิ ก็พอ ประหยัดแบตและ CPU
-    if (video.readyState >= 2 && now - lastTs > (following ? 70 : 200)) {
-      lastTs = now;
-      const vw = video.videoWidth, vh = video.videoHeight;
-      const dets = detector.detectForVideo(video, now).detections;
-      let best = null;
-      for (const d of dets) if (!best || d.boundingBox.width > best.boundingBox.width) best = d;
-      const found = !!best;
-      let x = 0, y = 0, w = 0;
-      if (found) {
-        const b = best.boundingBox;
-        x = (b.originX + b.width / 2) / vw * 2 - 1;
-        y = (b.originY + b.height / 2) / vh * 2 - 1;
-        w = b.width / vw;
-        if (now - faceSeenAt > 5000 && !busy && emotion === 'neutral') setEmotion('happy', 2000);  // เห็นคนแล้วดีใจ
-        faceSeenAt = now;
-        wake();  // มีคนอยู่หน้าแซน ตื่นมาฟัง
-        if (EMO[emotion].lx === null) {  // หน้าจออยู่ฝั่งตรงข้ามกล้อง ซ้ายของภาพ = ขวาของจอ
-          tgt.lx = Math.max(-1, Math.min(1, -x * 1.1));
-          tgt.ly = Math.max(-0.6, Math.min(0.6, y * 0.6));
+    let W = 0, H = 0;
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      W = innerWidth; H = innerHeight;
+      cv.width = layer.width = W * dpr; cv.height = layer.height = H * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    addEventListener('resize', resize);
+    resize();
+
+    let last = performance.now();
+    function frame(now) {
+      const dt = Math.min(0.05, (now - last) / 1000); last = now;
+      idle(now);
+      for (const k in cur) {
+        const speed = k === 'blink' ? 40 : k === 'mouth' ? 22 : 9;
+        cur[k] += (tgt[k] - cur[k]) * Math.min(1, dt * speed);
+      }
+      ctx.fillStyle = BG; ctx.fillRect(0, 0, W, H);
+      const u = Math.min(W * 0.5, H) * (1 - 0.42 * cur.bk);
+      const ew = u * 0.34 * cur.size, eh = u * 0.46 * cur.size, gap = u * 0.2;
+      const cx = W / 2 + cur.lx * u * 0.12, cy = H * (0.46 - 0.2 * cur.bk) + cur.ly * u * 0.1;
+      lctx.clearRect(0, 0, W, H);
+      for (const side of [-1, 1]) {
+        const persp = 1 + cur.lx * side * 0.08;  // ตาข้างที่มองไปจะดูใหญ่ขึ้นนิดหน่อย
+        drawEye(cx + side * (ew / 2 + gap / 2), cy, ew * persp, eh * persp, side);
+      }
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.shadowColor = EYE; ctx.shadowBlur = ew * 0.25 * (window.devicePixelRatio || 1);
+      ctx.drawImage(layer, 0, 0);
+      ctx.restore();
+      drawMouth(cx, cy + eh * 0.5 + u * 0.12, u);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // ---------------------------------------------------------------- ส่งข้อความ/error ไปเขียนใน brain.log
+    function report(msg) {
+      fetch('/api/log', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ msg: String(msg).slice(0, 500) })
+      }).catch(() => { });
+    }
+    addEventListener('error', e => report('JS error: ' + e.message + ' @' + e.lineno));
+    addEventListener('unhandledrejection', e => report('JS promise: ' + (e.reason && (e.reason.stack || e.reason))));
+
+    // ---------------------------------------------------------------- คำบรรยายใต้จอ
+    let subTimer = 0;
+    function show(text, cls) {
+      if (text && cls !== 'heard') report('จอ: ' + text);
+      const s = $('#sub');
+      s.textContent = text; s.className = cls || ''; s.style.opacity = 1;
+      clearTimeout(subTimer);
+      subTimer = setTimeout(() => (s.style.opacity = 0), 6000);
+    }
+
+    // ---------------------------------------------------------------- พูด
+    // เล่นไฟล์เสียงจาก brain.py (/api/tts) ปากขยับตามความดังของเสียงจริง
+    // ถ้าไม่มีเน็ต ค่อยลองเสียงอ่านของ Chrome แทน
+    const voice = new Audio();
+    let audioCtx = null, analyser = null, level = new Uint8Array(256);
+
+    function unlockAudio() {  // ต้องเรียกตอนผู้ใช้แตะจอ Chrome ถึงยอมให้เล่นเสียงทีหลัง
+      if (audioCtx) return;
+      try {
+        audioCtx = new AudioContext();
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 512;
+        audioCtx.createMediaElementSource(voice).connect(analyser);
+        analyser.connect(audioCtx.destination);
+      } catch (e) { report('AudioContext: ' + e); }
+    }
+
+    function voiceLevel() {
+      if (!analyser) return 0.3 + Math.random() * 0.7;
+      analyser.getByteTimeDomainData(level);
+      let sum = 0;
+      for (const v of level) sum += (v - 128) * (v - 128);
+      return Math.min(1, Math.sqrt(sum / level.length) / 28);
+    }
+
+    function speakBrowser(text) {
+      return new Promise(resolve => {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'th-TH';
+        let done = false;
+        const finish = () => { if (!done) { done = true; resolve(); } };
+        u.onend = finish;
+        u.onerror = e => { report('เสียงอ่านของ Chrome ใช้ไม่ได้: ' + e.error); finish(); };
+        setTimeout(finish, 1500 + text.length * 110);
+        speechSynthesis.speak(u);
+      });
+    }
+
+    function speak(text) {
+      return new Promise(resolve => {
+        if (!text) return resolve();
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true; speaking = false;
+          voice.onended = voice.onerror = null;
+          resolve();
+        };
+        speaking = true;
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        voice.onended = finish;
+        voice.onerror = () => { report('โหลดเสียงพูดไม่ได้ ลองเสียงของ Chrome'); speakBrowser(text).then(finish); };
+        voice.src = '/api/tts?q=' + encodeURIComponent(text);
+        voice.play().catch(e => { report('เล่นเสียงไม่ได้: ' + e.name); speakBrowser(text).then(finish); });
+        setTimeout(finish, 4000 + text.length * 150);  // กันค้าง
+      });
+    }
+
+    function stopSpeaking() {
+      voice.pause();
+      speechSynthesis.cancel();
+      if (voice.onended) voice.onended();
+    }
+
+    // ---------------------------------------------------------------- ฟัง
+    // Android ดัง "ติ๊ง" ทุกครั้งที่เริ่มเปิดไมค์ จึงเปิดไมค์ค้างไว้ (continuous) และฟังเฉพาะช่วงตื่น:
+    // ตื่นเมื่อ แตะจอ / มีคนคุย / เห็นหน้าคนในกล้อง  ไม่มีอะไรเลย 2 นาที -> ง่วง ปิดไมค์ (เงียบ)
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    let rec = null, busy = false, awakeUntil = 0, retryAt = 0, micBlocked = false, recAliveAt = 0;
+
+    // ตัดตัวฟังทิ้งทันที ไม่รอ onend (Chrome บน Android บางทีไม่ส่ง onend มา ทำให้ไม่ได้เปิดไมค์ใหม่อีกเลย)
+    function dropRec(why) {
+      const r = rec;
+      rec = null;
+      retryAt = Math.max(retryAt, performance.now() + 400);
+      if (r) { r.onresult = r.onerror = r.onend = null; try { r.abort(); } catch (_) { } }
+      if (why) report('ไมค์: ' + why);
+    }
+
+    const AWAKE_MS = 120000;  // ไม่มีใครคุยหรือเห็นหน้า 2 นาที -> ง่วง ปิดไมค์
+    const PAUSE_MS = 900;     // เงียบเกินนี้ถึงถือว่าพูดจบประโยค
+    function wake(ms = AWAKE_MS) { awakeUntil = Math.max(awakeUntil, performance.now() + ms); }
+
+    // Chrome บน Android ส่งผลแบบสะสม: ท่อนใหม่มีท่อนเก่ารวมอยู่แล้ว ("A" -> "A B")
+    // ส่วนบนคอมส่งแยกท่อน ("A" -> "B") รวมให้ได้ประโยคเดียวไม่ซ้ำทั้งสองแบบ
+    function mergeHeard(prev, t) {
+      t = t.trim();
+      if (!prev) return t;
+      if (!t) return prev;
+      const p = prev.replace(/\s/g, ''), q = t.replace(/\s/g, '');
+      if (q.startsWith(p)) return t;         // ท่อนใหม่รวมของเก่าไว้แล้ว
+      if (p.includes(q)) return prev;        // ได้ยินซ้ำท่อนเดิม
+      return prev + ' ' + t;
+    }
+
+    function listen() {
+      const now = performance.now();
+      if (!SR || micBlocked || rec || busy || speaking || now < retryAt || now > awakeUntil) return;
+      const me = rec = new SR();
+      rec.lang = 'th-TH'; rec.interimResults = true; rec.continuous = true;
+      recAliveAt = now;
+      // ระบบฟังเสียงชอบตัดประโยคตอนเว้นจังหวะ ("เดินหน้า ... 50") จึงเก็บทุกท่อนไว้
+      // แล้วรอให้เงียบ PAUSE_MS ก่อนค่อยส่งทั้งประโยค
+      let said = '', timer = 0;
+      rec.onresult = e => {
+        let interim = '';
+        for (let i = e.resultIndex; i < e.results.length; i++) {
+          const t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) said = mergeHeard(said, t);
+          else interim += t;
+        }
+        show(mergeHeard(said, interim), 'heard');
+        recAliveAt = performance.now();
+        wake();
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          if (!said) return;
+          const t = said; said = '';
+          if (rec === me) dropRec();
+          handle(t);
+        }, interim ? PAUSE_MS * 2 : PAUSE_MS);
+      };
+      rec.onerror = e => {
+        if (e.error !== 'no-speech' && e.error !== 'aborted') report('ไมค์ error: ' + e.error);
+        // not-allowed บน Android เกิดชั่วคราวได้ (เช่นจอดับแวบเดียว) จึงรอ 10 วิแล้วลองใหม่ ไม่ปิดไมค์ถาวร
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { show('ยังไม่ได้อนุญาตให้ใช้ไมค์'); retryAt = performance.now() + 10000; }
+        else if (e.error === 'network') { show('ระบบฟังเสียงต้องใช้อินเทอร์เน็ต'); retryAt = performance.now() + 5000; }
+      };
+      rec.onend = () => { if (rec === me) dropRec(); };
+      try { rec.start(); } catch (e) { dropRec('เปิดไม่ได้ ' + e.name); retryAt = now + 1000; }
+    }
+
+    setInterval(() => {
+      const asleep = performance.now() > awakeUntil && !busy && !speaking;
+      if (asleep && rec) dropRec();
+      // ตัวฟังค้าง: เปิดอยู่แต่เงียบไป 15 วิ (ปกติ Android ปิดเองเร็วกว่านี้) -> เปิดใหม่
+      if (rec && performance.now() - recAliveAt > 15000) dropRec('ค้าง เปิดใหม่');
+      if (asleep && emotion === 'neutral') setEmotion('sleepy');
+      if (!asleep && emotion === 'sleepy') setEmotion('neutral');
+      listen();
+    }, 500);
+
+    async function handle(text) {
+      busy = true;
+      setEmotion('listening');
+      let res;
+      try {
+        const r = await fetch('/api/hear', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+        res = await r.json();
+      } catch (_) {
+        res = { say: 'สมองใน Termux ไม่ตอบ ลองเช็กว่ายังรัน brain.py อยู่ไหม', emotion: 'sad' };
+      }
+      following = !!res.follow;
+      if ('board' in res) setBoard(res.board);
+      setEmotion(res.emotion || 'neutral', 4000);
+      if (res.script) await runScript(res.script);
+      if (res.sound) await playSound(res.sound);
+      if (res.music) playMusicWhileMoving(res.music);  // ไม่รอ: พูดทับเพลงได้
+      show(res.say);
+      await speak(res.say);
+      if (res.echo === false && $('#board').classList.contains('on')) boardTimer = setTimeout(() => setBoard(null), 2500);
+      busy = false;
+      wake();
+    }
+
+    // ---------------------------------------------------------------- เสียงพิเศษ: ผิวปาก
+
+
+    // ผิวปาก: เสียงหวีด (sine) + สั่นนิด ๆ (vibrato) + ลมหายใจเบา ๆ ปากห่อเป็นวงกลม
+    const WHISTLES = [
+      // [ความถี่เริ่ม, ความถี่จบ, วินาที] ความถี่ 0 = เว้นจังหวะ
+      [[900, 2200, 0.35], [0, 0, 0.12], [1000, 2400, 0.25], [2400, 800, 0.55]],               // หวีดแซว
+      [[1319, 1319, 0.2], [1568, 1568, 0.2], [1760, 1760, 0.2], [1568, 1568, 0.2], [1319, 1319, 0.45],
+       [0, 0, 0.1], [1175, 1175, 0.2], [1319, 1319, 0.5]],                                     // ทำนองสั้น ๆ
+      [[1500, 1900, 0.18], [0, 0, 0.08], [1500, 1900, 0.18], [0, 0, 0.08], [1900, 1300, 0.4]], // เรียกหา
+    ];
+    function playWhistle() {
+      unlockAudio();
+      const notes = WHISTLES[Math.floor(Math.random() * WHISTLES.length)];
+      const t = audioCtx.currentTime + 0.05;
+      const osc = audioCtx.createOscillator(), amp = audioCtx.createGain();
+      const vib = audioCtx.createOscillator(), vibAmt = audioCtx.createGain();
+      vib.frequency.value = 5.5; vibAmt.gain.value = 18;
+      vib.connect(vibAmt); vibAmt.connect(osc.frequency);
+      osc.type = 'sine'; amp.gain.value = 0;
+      osc.connect(amp); amp.connect(analyser);
+      // ลมหายใจ: noise กรองเสียงสูง เบา ๆ
+      const noise = audioCtx.createBufferSource(), nb = audioCtx.createBuffer(1, audioCtx.sampleRate, audioCtx.sampleRate);
+      const nd = nb.getChannelData(0);
+      for (let i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1;
+      noise.buffer = nb; noise.loop = true;
+      const bp = audioCtx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.5;
+      const nAmp = audioCtx.createGain(); nAmp.gain.value = 0;
+      noise.connect(bp); bp.connect(nAmp); nAmp.connect(analyser);
+      let at = t;
+      for (const [f0, f1, d] of notes) {
+        if (f0) {
+          osc.frequency.setValueAtTime(f0, at);
+          osc.frequency.exponentialRampToValueAtTime(f1, at + d);
+          bp.frequency.setValueAtTime(f0, at);
+          amp.gain.setTargetAtTime(0.32, at, 0.02);
+          nAmp.gain.setTargetAtTime(0.03, at, 0.02);
+          amp.gain.setTargetAtTime(0, at + d - 0.04, 0.02);
+          nAmp.gain.setTargetAtTime(0, at + d - 0.04, 0.02);
+        }
+        at += d;
+      }
+      [osc, vib, noise].forEach(n => { n.start(t); n.stop(at + 0.15); });
+      soundNode = osc;
+      tgt.mo = 1;
+      return new Promise(r => { osc.onended = () => { tgt.mo = 0; soundNode = null; r(); }; });
+    }
+
+    // เล่นไฟล์เสียงอุทาน (ผ่าน voice + analyser ปากจึงขยับตามเสียง)
+    function playFile(url) {
+      return new Promise(resolve => {
+        let done = false;
+        const finish = () => { if (done) return; done = true; speaking = false; voice.onended = voice.onerror = null; resolve(); };
+        unlockAudio();
+        if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        speaking = true;
+        voice.onended = finish;
+        voice.onerror = () => { report('เล่นไฟล์เสียงไม่ได้: ' + url); finish(); };
+        voice.src = url;
+        voice.play().catch(e => { report('เล่นไฟล์เสียงไม่ได้: ' + e.name); finish(); });
+        setTimeout(finish, 20000);  // กันค้าง
+        soundNode = { stop: () => { voice.pause(); finish(); } };
+      });
+    }
+
+    // เพลงประกอบท่า (เต้น): เล่นตอนรถเริ่มขยับ พอรถทำท่าจบ ค่อย ๆ เบาลงแล้วหยุด
+    const music = new Audio();
+    let musicStop = null;
+    async function playMusicWhileMoving(url) {
+      stopMusic();
+      let stopped = false;
+      const fade = () => new Promise(r => {
+        const t0 = performance.now(), v0 = music.volume;
+        const step = () => {
+          const k = Math.min(1, (performance.now() - t0) / 1500);
+          music.volume = v0 * (1 - k);
+          if (k < 1 && !stopped) requestAnimationFrame(step); else { music.pause(); r(); }
+        };
+        step();
+      });
+      musicStop = () => { stopped = true; music.pause(); };
+      music.src = url; music.volume = 0.7; music.currentTime = 0;
+      try { await music.play(); } catch (e) { report('เปิดเพลงไม่ได้: ' + e.name); return; }
+      const t0 = performance.now();
+      await sleep(1500);  // เผื่อรถเพิ่งเริ่ม
+      while (!stopped && !music.ended && performance.now() - t0 < 60000) {
+        try { if (!(await (await fetch('/api/robot')).json()).running) break; } catch (_) { break; }
+        await sleep(300);
+      }
+      if (!stopped) await fade();
+    }
+    function stopMusic() { if (musicStop) musicStop(); musicStop = null; }
+
+    let soundNode = null;
+    function stopSound() {
+      if (soundNode) { try { soundNode.stop(); } catch (_) { } }
+    }
+
+    async function playSound(s) {
+      try {
+        if (s.type === 'whistle') await playWhistle();
+        else if (s.type === 'file') await playFile(s.url);
+      } catch (e) { report('เล่นเสียงพิเศษไม่ได้: ' + e); speaking = false; tgt.mo = 0; }
+    }
+
+    // สคริปต์แนะนำตัว: แต่ละท่อน สั่งท่า -> พูด -> รอรถทำท่าจบ แล้วค่อยท่อนถัดไป (แตะจอ = เลิกกลางคัน)
+    let scriptAbort = false;
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    async function runScript(steps) {
+      scriptAbort = false;
+      for (const st of steps) {
+        if (scriptAbort) return;
+        if (st.prog) {
+          await fetch('/api/move', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prog: st.prog }) }).catch(() => { });
+        }
+        setEmotion(st.emotion || 'neutral');
+        show(st.say);
+        if (st.sound) await playSound(st.sound);  // ท่อนอุทานที่มีไฟล์เสียง
+        else await speak(st.say);
+        const t0 = performance.now();
+        while (st.prog && !scriptAbort && performance.now() - t0 < 20000) {
+          try {
+            const r = await (await fetch('/api/robot')).json();
+            if (!r.running) break;
+          } catch (_) { break; }
+          await sleep(300);
         }
       }
-      if (following && now - lastTrack > 120) {
-        lastTrack = now;
-        fetch('/api/track', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ found, x, w }) }).catch(() => {});
-      }
-      camCv.classList.toggle('on', following);
-      if (following) {
-        camCtx.drawImage(video, 0, 0, camCv.width, camCv.height);
-        if (found) {
-          const b = best.boundingBox, sx = camCv.width / vw, sy = camCv.height / vh;
-          camCtx.strokeStyle = EYE; camCtx.lineWidth = 2;
-          camCtx.strokeRect(b.originX * sx, b.originY * sy, b.width * sx, b.height * sy);
-        }
+      if (!scriptAbort) setEmotion('happy', 2500);
+    }
+
+    // กล่องข้อความโหมดพูดตาม: text = ข้อความ (แสดง), null = ซ่อน
+    let boardTimer = 0;
+    function setBoard(text) {
+      clearTimeout(boardTimer);
+      $('#board').classList.toggle('on', text !== null);
+      tgt.bk = text !== null ? 1 : 0;
+      if (text !== null) $('#boardText').textContent = text || '...';
+    }
+
+    // ---------------------------------------------------------------- สถานะบอร์ด
+    async function poll() {
+      try {
+        const s = await (await fetch('/api/state')).json();
+        $('#dot').classList.toggle('on', s.online);
+        $('#stat').textContent = s.online ? 'ล้อพร้อม' : 'ยังไม่เจอล้อ (ESP8266)';
+        window.robotName = s.name;
+        following = !!s.follow;
+        if (!s.echo && $('#board').classList.contains('on') && !busy) setBoard(null);  // หมดเวลาพูดตามเอง
+        const btn = $('#start');
+        if (btn) btn.firstChild.textContent = 'แตะเพื่อปลุก' + s.name;
+      } catch (_) {
+        $('#dot').classList.remove('on');
+        $('#stat').textContent = 'สมองไม่ตอบ (brain.py)';
       }
     }
-    requestAnimationFrame(tick);
-  };
-  requestAnimationFrame(tick);
-}
+    poll(); setInterval(poll, 3000);
 
-// แตะหน้าจอ = หยุดรถทันที
-cv.addEventListener('pointerdown', () => {
-  following = false;
-  setBoard(null);
-  fetch('/api/stop', { method: 'POST' }).catch(() => {});
-  stopSpeaking();
-  unlockAudio();
-  wake();
-  setEmotion('surprised', 1200);
-  show('หยุด!');
-});
-</script>
+    // ---------------------------------------------------------------- เริ่ม
+    let wakeLock = null;
+    async function keepAwake() {
+      try { wakeLock = await navigator.wakeLock.request('screen'); } catch (_) { }
+    }
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') keepAwake(); });
+
+    $('#start').addEventListener('click', async () => {
+      $('#start').remove();
+      try { await document.documentElement.requestFullscreen(); } catch (_) { }
+      keepAwake();
+      unlockAudio();
+      wake();
+      setEmotion('happy', 3000);
+      const hi = 'ตู๊ด ตี๊ด ตูด ตีด แซนเริ่มปฏิบัติการ';
+      show(hi);
+      if (!SR) show('Chrome นี้ฟังเสียงไม่ได้ ลองอัปเดต Chrome');
+      startEyes();
+      await speak(hi);
+    });
+
+    // ---------------------------------------------------------------- ตา: กล้องหน้า + MediaPipe จับหน้า
+    // ตามองตามหน้าคนตลอด / โหมดตาม (พูด "ตามมา") ส่งตำแหน่งหน้าให้ brain.py สั่งล้อ
+    let following = false, faceSeenAt = -1e9, lastTrack = 0;
+    const video = document.createElement('video');
+    video.muted = true; video.playsInline = true;
+    const camCv = $('#cam'), camCtx = camCv.getContext('2d');
+
+    async function startEyes() {
+      let detector;
+      try {
+        video.srcObject = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }, audio: false
+        });
+        await video.play();
+        const { FilesetResolver, FaceDetector } = await import('/vendor/vision_bundle.mjs');
+        const files = await FilesetResolver.forVisionTasks('/vendor/wasm');
+        const make = delegate => FaceDetector.createFromOptions(files, {
+          baseOptions: { modelAssetPath: '/vendor/face.tflite', delegate },
+          runningMode: 'VIDEO', minDetectionConfidence: 0.6
+        });
+        detector = await make('GPU').catch(e => { report('GPU ใช้ไม่ได้ ใช้ CPU แทน: ' + e); return make('CPU'); });
+        report('ตาพร้อม กล้อง ' + video.videoWidth + 'x' + video.videoHeight);
+      } catch (e) {
+        show('เปิดตา (กล้อง) ไม่ได้: ' + (e.message || e.name));
+        return;
+      }
+      let lastTs = -1;
+      const tick = () => {
+        const now = performance.now();
+        // โหมดตามต้องไว (~14 ครั้ง/วิ) ส่วนแค่ให้ตามองตาม ~5 ครั้ง/วิ ก็พอ ประหยัดแบตและ CPU
+        if (video.readyState >= 2 && now - lastTs > (following ? 70 : 200)) {
+          lastTs = now;
+          const vw = video.videoWidth, vh = video.videoHeight;
+          const dets = detector.detectForVideo(video, now).detections;
+          let best = null;
+          for (const d of dets) if (!best || d.boundingBox.width > best.boundingBox.width) best = d;
+          const found = !!best;
+          let x = 0, y = 0, w = 0;
+          if (found) {
+            const b = best.boundingBox;
+            x = (b.originX + b.width / 2) / vw * 2 - 1;
+            y = (b.originY + b.height / 2) / vh * 2 - 1;
+            w = b.width / vw;
+            if (now - faceSeenAt > 5000 && !busy && emotion === 'neutral') setEmotion('happy', 2000);  // เห็นคนแล้วดีใจ
+            faceSeenAt = now;
+            wake();  // มีคนอยู่หน้าแซน ตื่นมาฟัง
+            if (EMO[emotion].lx === null) {  // หน้าจออยู่ฝั่งตรงข้ามกล้อง ซ้ายของภาพ = ขวาของจอ
+              tgt.lx = Math.max(-1, Math.min(1, -x * 1.1));
+              tgt.ly = Math.max(-0.6, Math.min(0.6, y * 0.6));
+            }
+          }
+          if (following && now - lastTrack > 120) {
+            lastTrack = now;
+            fetch('/api/track', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ found, x, w })
+            }).catch(() => { });
+          }
+          camCv.classList.toggle('on', following);
+          if (following) {
+            camCtx.drawImage(video, 0, 0, camCv.width, camCv.height);
+            if (found) {
+              const b = best.boundingBox, sx = camCv.width / vw, sy = camCv.height / vh;
+              camCtx.strokeStyle = EYE; camCtx.lineWidth = 2;
+              camCtx.strokeRect(b.originX * sx, b.originY * sy, b.width * sx, b.height * sy);
+            }
+          }
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }
+
+    // แตะหน้าจอ = หยุดรถทันที
+    cv.addEventListener('pointerdown', () => {
+      following = false;
+      scriptAbort = true;
+      stopSound();
+      stopMusic();
+      setBoard(null);
+      fetch('/api/stop', { method: 'POST' }).catch(() => { });
+      stopSpeaking();
+      unlockAudio();
+      wake();
+      setEmotion('surprised', 1200);
+      show('หยุด!');
+    });
+  </script>
 </body>
+
 </html>

@@ -9,3 +9,8 @@ __pycache__/
 *.gguf
 .DS_Store
 build/
+
+# เสียงที่ยังไม่รู้ที่มา/ลิขสิทธิ์ เก็บไว้ในเครื่องเท่านั้น (ถ้ายืนยันว่าแจกต่อได้ค่อยลบบรรทัดเหล่านี้)
+phone/sounds/ahhh.mp3
+phone/sounds/sing.mp3
+phone/sounds/dance.mp3
