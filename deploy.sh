@@ -13,7 +13,15 @@ if ! ssh -o ConnectTimeout=15 "$PHONE" true 2>/dev/null; then
 fi
 
 # scp ใช้กับ Termux ไม่ได้ จึงส่งผ่าน ssh ทีละไฟล์
-for f in brain.py commands.py face.html start.sh; do
+for f in brain.py commands.py feedback.py mission.py people.py face.html remote.html start.sh get_vendor.sh; do
+  ssh "$PHONE" "cat > ~/robot/$f" < "$f"
+  echo "  ✓ $f"
+done
+
+# สมองแมลงวันจิ๋ว (phone/fly/): โค้ด + ผังสายไฟ
+ssh "$PHONE" 'mkdir -p ~/robot/fly'
+for f in fly/*.js fly/*.json; do
+  [ -f "$f" ] || continue
   ssh "$PHONE" "cat > ~/robot/$f" < "$f"
   echo "  ✓ $f"
 done
@@ -27,6 +35,9 @@ for f in sounds/*.mp3 sounds/*.wav sounds/*.ogg sounds/*.m4a; do
   ssh "$PHONE" "cat > ~/robot/$f" < "$f"
   echo "  ✓ $f"
 done
+
+# โมเดลจำของ (ภารกิจหาของ) หรือโมเดลจำหน้า ยังไม่มีในมือถือ -> โหลดครั้งเดียว
+ssh "$PHONE" '[ -f ~/robot/vendor/embedder.tflite ] && [ -f ~/robot/vendor/faceapi/face_recognition_model.bin ] || { echo "  → โหลดโมเดล..."; bash ~/robot/get_vendor.sh; }'
 
 echo "→ เริ่มแซนใหม่..."
 ssh "$PHONE" 'bash ~/robot/start.sh'

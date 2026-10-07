@@ -44,6 +44,11 @@
 #endif
 
 const uint16_t BRAIN_PORT = 8080;   // brain.py ในมือถือ
+#ifndef WIFI2_SSID   // secrets.h รุ่นเก่าไม่มี WiFi สำรอง = ไม่ใช้
+#define WIFI2_SSID ""
+#define WIFI2_PASS ""
+#endif
+
 const char* HOSTNAME = "robot";     // เปิดเว็บผ่าน http://robot.local ได้ (iPhone / Mac)
 const char* AP_SSID  = "Robot-AI";  // ถ้าต่อ WiFi ไม่ติด บอร์ดจะปล่อย WiFi ชื่อนี้ให้บังคับเองได้
                                     // (โหมดนี้ไม่มีอินเทอร์เน็ต จึงใช้ AI ไม่ได้)
@@ -356,7 +361,7 @@ void handleStatus() {
   j += F(",\"ap\":");      j += apMode ? F("true") : F("false");
   j += F(",\"ip\":\"");    j += (apMode ? WiFi.softAPIP() : WiFi.localIP()).toString();
   j += F("\",\"host\":\""); j += HOSTNAME;
-  j += F("\",\"ssid\":\""); j += WIFI_SSID;
+  j += F("\",\"ssid\":\""); j += (WiFi.status() == WL_CONNECTED) ? WiFi.SSID() : String(WIFI_SSID);
   j += F("\",\"wifiErr\":"); j += wifiErr;
   j += F(",\"wifiSeen\":");  j += wifiSeen;
   j += F(",\"config\":");    j += configJson();
@@ -481,29 +486,11 @@ void printAddress() {
   }
 }
 
-void setupWiFi() {
-  WiFi.persistent(false);
-  WiFi.mode(WIFI_STA);
-  WiFi.hostname(HOSTNAME);
-  WiFi.setSleepMode(WIFI_NONE_SLEEP);  // ตอบสนองไวขึ้นตอนบังคับเอง
-  // สแกนก่อน: เห็น WiFi บ้าน -> ต่อบ้าน (สั่งผ่านเว็บได้เหมือนเดิม)
-  //           ไม่เห็นบ้านแต่เห็น Hotspot มือถือ -> ต่อมือถือ
-  const char* ssid = WIFI_SSID;
-  const char* pass = WIFI_PASS;
-  bool seenHome = false, seenPhone = false;
-  int found = WiFi.scanNetworks();
-  for (int i = 0; i < found; i++) {
-    if (WiFi.SSID(i) == WIFI_SSID) seenHome = true;
-    if (WiFi.SSID(i) == PHONE_SSID) seenPhone = true;
-  }
-  WiFi.scanDelete();
-  if (!seenHome && seenPhone) {
-    ssid = PHONE_SSID;
-    pass = PHONE_PASS;
-    onPhone = true;
-  }
+// ต่อ WiFi หนึ่งชื่อ รอไม่เกิน 30 วิ คืน true ถ้าติด
+bool tryWiFi(const char* ssid, const char* pass) {
+  WiFi.disconnect();
+  delay(100);
   WiFi.begin(ssid, pass);
-
   Serial.printf("\nกำลังต่อ WiFi \"%s\" ", ssid);
   uint32_t t0 = millis();
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < 30000) {
@@ -513,8 +500,47 @@ void setupWiFi() {
   }
   digitalWrite(PIN_LED, HIGH);  // LED บนบอร์ดติดเมื่อเป็น LOW
   Serial.println();
+  return WiFi.status() == WL_CONNECTED;
+}
 
-  if (WiFi.status() == WL_CONNECTED) {
+void setupWiFi() {
+  WiFi.persistent(false);
+  WiFi.mode(WIFI_STA);
+  WiFi.hostname(HOSTNAME);
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);  // ตอบสนองไวขึ้นตอนบังคับเอง
+  // สแกนก่อน: เห็น WiFi บ้านหรือ WiFi สำรอง -> ต่อตัวที่สัญญาณแรงกว่า ไม่ติดก็ลองอีกตัว (สั่งผ่านเว็บได้เหมือนเดิม)
+  //           ไม่เห็นทั้งสองแต่เห็น Hotspot มือถือ -> ต่อมือถือ
+  bool hasBackup = WIFI2_SSID[0] != '\0';
+  int rssiHome = 0, rssiBackup = 0;  // 0 = สแกนไม่เจอ
+  bool seenPhone = false;
+  int found = WiFi.scanNetworks();
+  for (int i = 0; i < found; i++) {
+    int r = WiFi.RSSI(i);
+    if (WiFi.SSID(i) == WIFI_SSID && (!rssiHome || r > rssiHome)) rssiHome = r;
+    if (hasBackup && WiFi.SSID(i) == WIFI2_SSID && (!rssiBackup || r > rssiBackup)) rssiBackup = r;
+    if (WiFi.SSID(i) == PHONE_SSID) seenPhone = true;
+  }
+  WiFi.scanDelete();
+
+  bool ok = false;
+  if (rssiHome || rssiBackup) {
+    bool backupFirst = rssiBackup && (!rssiHome || rssiBackup > rssiHome);
+    const char* ssid[2] = { WIFI_SSID, WIFI2_SSID };
+    const char* pass[2] = { WIFI_PASS, WIFI2_PASS };
+    int seen[2] = { rssiHome, rssiBackup };
+    for (int k = 0; k < 2 && !ok; k++) {
+      int i = backupFirst ? 1 - k : k;
+      if (seen[i]) ok = tryWiFi(ssid[i], pass[i]);
+    }
+  } else if (seenPhone) {
+    onPhone = true;
+    ok = tryWiFi(PHONE_SSID, PHONE_PASS);
+  } else {
+    ok = tryWiFi(WIFI_SSID, WIFI_PASS);  // สแกนไม่เจออะไรเลย ลองบ้านตามเดิม (บางทีสแกนพลาด)
+  }
+
+  if (ok) {
+    Serial.printf("ต่อ WiFi \"%s\" แล้ว (สัญญาณ %d dBm)\n", WiFi.SSID().c_str(), WiFi.RSSI());
     WiFi.setAutoReconnect(true);
     if (MDNS.begin(HOSTNAME)) MDNS.addService("http", "tcp", 80);
   } else {

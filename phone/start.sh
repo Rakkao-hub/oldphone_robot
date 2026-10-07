@@ -10,6 +10,9 @@ sleep 1
 export TTS_VOICE=th-TH-NiwatNeural   # ผู้ชาย / th-TH-PremwadeeNeural = ผู้หญิง
 export TTS_RATE=+5%                  # ความเร็ว เช่น +10% เร็วขึ้น, -10% ช้าลง
 export TTS_PITCH=+8Hz                # เสียงสูงต่ำ เช่น +20Hz แหลมขึ้น, -10Hz ทุ้มลง
+# export INSTINCT_TURN=0             # เอา # ออก = สัญชาตญาณแค่เหลือบตา ไม่หมุนตัว
+# export INSTINCT_STARTLE=0          # เอา # ออก = สะดุ้งแค่ทำหน้าตกใจ ไม่ถอยหลัง
+# export INSTINCT_EXPLORE=0          # เอา # ออก = ไม่ออกเดินสำรวจเองตอนเบื่อ (สั่ง "ไปสำรวจ" ได้)
 nohup python brain.py > brain.log 2>&1 &
 sleep 2
 am start -a android.intent.action.VIEW -d "http://localhost:8080/?t=$(date +%s)" com.android.chrome >/dev/null 2>&1

@@ -4,6 +4,7 @@ firmware/robot_ai/secrets.h
 # ไฟล์ที่โหลด/สร้างขึ้นเอง
 phone/vendor/
 phone/.robot_url
+phone/.remote_key
 phone/*.log
 __pycache__/
 *.gguf
@@ -14,3 +15,12 @@ build/
 phone/sounds/ahhh.mp3
 phone/sounds/sing.mp3
 phone/sounds/dance.mp3
+
+# สมุดจดคำชม/ตำหนิของแซน (สร้างเองตอนรัน)
+phone/.feedback.json
+
+# ของที่สอนแซนให้จำ (สร้างเองตอนรัน)
+phone/.items.json
+
+# หน้าคนที่แซนรู้จัก (ข้อมูลส่วนตัว อยู่ในมือถือเท่านั้น)
+phone/.people.json

@@ -138,6 +138,35 @@
       margin-bottom: 6px;
     }
 
+    #wonder {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      padding: 14px;
+      border: 1.5px solid var(--eye);
+      border-radius: 16px;
+      background: rgba(0, 0, 0, .82);
+      color: var(--text);
+      font-size: clamp(18px, 4.6vmin, 30px);
+    }
+
+    #wonder.on {
+      display: flex;
+    }
+
+    #wonder img {
+      width: min(52vmin, 260px);
+      height: min(52vmin, 260px);
+      border-radius: 10px;
+      object-fit: cover;
+      transform: scaleX(-1);
+    }
+
     #start small {
       display: block;
       margin-top: 10px;
@@ -154,6 +183,7 @@
   <div id="board"><small>โหมดพูดตาม · พูดว่า "พูดตามได้" ให้แซนพูด · "ยกเลิก" เพื่อออก</small><span
       id="boardText"></span></div>
   <canvas id="cam" width="160" height="120"></canvas>
+  <div id="wonder"><img alt=""><span>อันนี้คืออะไรเหรอ?</span></div>
   <button id="start">แตะเพื่อปลุกหุ่นยนต์<small>แตะหน้าจอระหว่างใช้งาน = สั่งรถหยุด</small></button>
 
   <script>
@@ -174,8 +204,18 @@
       listening: { tilt: -0.2, happy: 0, size: 1.06, lid: 0, lx: null, ly: null },
       confused: { tilt: 0.5, happy: 0, size: 0.92, lid: 0.1, lx: 0.3, ly: -0.2 },
       sleepy: { tilt: 0.15, happy: 0, size: 1, lid: 0.5, lx: null, ly: 0.2 },
+      // สีหน้าที่มีของตกแต่งเพิ่ม (FX): ค่าที่ไม่ใส่ = 0
+      excited: { tilt: 0, happy: 0, size: 1.18, lid: 0, lx: 0, ly: -0.1, sparkle: 1, grin: 1 },  // ตาโตมีประกาย ยิ้มกว้าง
+      smug: { tilt: 0, happy: 0, size: 1, lid: 0.5, lx: 0.45, ly: -0.1, smirk: 1 },             // ตาปรือเหล่ข้าง ยิ้มมุมปาก
+      shy: { tilt: 0.3, happy: 0.8, size: 0.92, lid: 0, lx: -0.35, ly: 0.4, blush: 1 },          // ตายิ้มก้มมองต่ำ แก้มแดง
+      focus: { tilt: 0, happy: 0, size: 1, lid: 0, lx: 0, ly: 0.3, squint: 1, tongue: 1 },       // ตา > < แลบลิ้น
+      love: { tilt: 0, happy: 1, size: 1, lid: 0, lx: 0, ly: 0, heart: 1, blush: 0.6 },          // ตาหัวใจ
+      mischief: { tilt: -0.6, happy: 0, size: 0.95, lid: 0.4, lx: 0.3, ly: 0, brows: 1, grin: 1 }, // ตาหรี่ คิ้วเจ้าเล่ห์
+      tease: { tilt: 0, happy: 0, size: 1.05, lid: 0, lx: -0.25, ly: -0.1, wink: 1, bleh: 1 },    // ขยิบตา แลบลิ้นยาว กวนโอ้ย
     };
+    const FX = ['sparkle', 'grin', 'smirk', 'blush', 'squint', 'tongue', 'heart', 'brows', 'wink', 'bleh'];
     const cur = { tilt: 0, happy: 0, size: 1, lid: 0, lx: 0, ly: 0, blink: 1, mouth: 0, bk: 0, mo: 0 };  // bk: 1 = มีกล่องพูดตาม ย่อหน้าหลบ, mo: 1 = ปากห่อ (ผิวปาก)
+    for (const k of FX) cur[k] = 0;
     const tgt = { ...cur };
     let emotion = 'neutral', emoTimer = 0, speaking = false;
 
@@ -183,6 +223,7 @@
       emotion = EMO[name] ? name : 'neutral';
       const e = EMO[emotion];
       Object.assign(tgt, { tilt: e.tilt, happy: e.happy, size: e.size, lid: e.lid });
+      for (const k of FX) tgt[k] = e[k] || 0;
       if (e.lx !== null) tgt.lx = e.lx;
       if (e.ly !== null) tgt.ly = e.ly;
       clearTimeout(emoTimer);
@@ -198,6 +239,9 @@
         if (Math.random() < 0.2) setTimeout(() => { tgt.blink = 0.06; setTimeout(() => (tgt.blink = 1), 110); }, 260);
         nextBlink = now + 2000 + Math.random() * 4000;
       }
+      // fly-instinct: ตอนว่างและไม่เห็นหน้าใคร ให้สมองแมลงวันเลือกว่าจะเหลือบไปทางไหน (ไม่มีสัญญาณก็กลอกตาสุ่มแบบเดิม)
+      const flyLook = window.flyInstinct && EMO[emotion].lx === null && now - faceSeenAt > 1500 ? window.flyInstinct.gaze(now) : null;
+      if (flyLook !== null) { tgt.lx = flyLook; tgt.ly = 0; nextLook = now + 900; }
       if (now > nextLook && EMO[emotion].lx === null && now - faceSeenAt > 1500) {
         const center = Math.random() < 0.45;
         tgt.lx = center ? 0 : (Math.random() * 2 - 1) * 0.7;
@@ -230,8 +274,11 @@
       const top = cy - hh / 2, bot = cy + hh / 2, l = cx - w / 2, r = cx + w / 2;
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = EYE;
+      const swap = Math.max(cur.heart, cur.squint, side > 0 ? cur.wink : 0);  // ตาหัวใจ / ตา > < / ขยิบตา มาแทนตาปกติ
+      ctx.globalAlpha = 1 - Math.min(1, swap * 1.3);
       roundRect(l, top, w, hh, w * 0.28, ctx);
       ctx.fill();
+      ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = 'destination-out';
       ctx.fillStyle = '#000';
 
@@ -252,6 +299,69 @@
         ctx.fill();
       }
       ctx.globalCompositeOperation = 'source-over';
+      drawEyeFx(ctx, cx, cy, w, h, side);
+    }
+
+    // ของตกแต่งที่ตา วาดลงเลเยอร์เดียวกับตา จึงเรืองแสงสีเดียวกัน
+    function drawEyeFx(ctx, cx, cy, w, h, side) {
+      const t = performance.now() / 1000;
+      ctx.lineCap = ctx.lineJoin = 'round';
+      if (cur.heart > 0.02) {  // ตาหัวใจ เด้งเข้าแล้วเต้นตุบ ๆ
+        const s = Math.max(w, h) * 0.62 * cur.heart * (1 + 0.07 * Math.sin(t * 6));
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(1, cur.blink);
+        ctx.globalAlpha = Math.min(1, cur.heart * 1.5);
+        ctx.fillStyle = EYE;
+        ctx.beginPath();
+        ctx.moveTo(0, s * 0.42);
+        ctx.bezierCurveTo(-s * 0.95, -s * 0.15, -s * 0.5, -s * 0.85, 0, -s * 0.35);
+        ctx.bezierCurveTo(s * 0.5, -s * 0.85, s * 0.95, -s * 0.15, 0, s * 0.42);
+        ctx.fill();
+        ctx.restore();
+      }
+      const sq = Math.max(cur.squint, side > 0 ? cur.wink : 0);  // wink = หยีตาขวาข้างเดียว
+      if (sq > 0.02) {  // ตา > <  ปลายแหลมชี้เข้าหากลางหน้า
+        const d = -side, x0 = cx - d * w * 0.32, x1 = cx + d * w * 0.32;
+        ctx.globalAlpha = Math.min(1, sq * 1.3);
+        ctx.strokeStyle = EYE; ctx.lineWidth = w * 0.17;
+        ctx.beginPath();
+        ctx.moveTo(x0, cy - h * 0.26); ctx.lineTo(x1, cy); ctx.lineTo(x0, cy + h * 0.26);
+        ctx.stroke();
+      }
+      if (cur.sparkle > 0.02 && cur.blink > 0.5) {  // ประกายในตา
+        const r = w * 0.13 * (1 + 0.15 * Math.sin(t * 8));
+        ctx.globalAlpha = cur.sparkle;
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(cx + w * 0.16, cy - h * 0.2, r, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(cx - w * 0.14, cy + h * 0.12, r * 0.5, 0, Math.PI * 2); ctx.fill();
+      }
+      if (cur.brows > 0.02) {  // คิ้วเจ้าเล่ห์ หัวคิ้วต่ำ หางคิ้วชี้ขึ้น
+        const top = cy - h / 2;
+        ctx.globalAlpha = cur.brows;
+        ctx.strokeStyle = EYE; ctx.lineWidth = h * 0.08;
+        ctx.beginPath();
+        ctx.moveTo(cx + side * w * 0.5, top - h * 0.3);
+        ctx.lineTo(cx - side * w * 0.45, top - h * 0.08);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // แก้มแดง: ขีดเฉียง /// ใต้ตา สีเดียวกับตา
+    function drawBlush(ex, ey, ew, u) {
+      if (cur.blush < 0.02) return;
+      ctx.save();
+      ctx.shadowColor = EYE; ctx.shadowBlur = u * 0.03;
+      ctx.globalAlpha = 0.75 * cur.blush;
+      ctx.strokeStyle = EYE; ctx.lineWidth = u * 0.012; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let i = -1; i <= 1; i++) {
+        const x = ex + i * ew * 0.22;
+        ctx.moveTo(x - u * 0.015, ey + u * 0.025); ctx.lineTo(x + u * 0.015, ey - u * 0.025);
+      }
+      ctx.stroke();
+      ctx.restore();
     }
 
     function drawMouth(cx, cy, u) {
@@ -267,6 +377,50 @@
         ctx.fillStyle = EYE;
         roundRect(cx - w / 2, cy - h / 2, w, h, h / 2);
         ctx.fill();
+      } else if (Math.max(cur.grin, cur.smirk, cur.tongue, cur.bleh) > 0.05) {
+        ctx.strokeStyle = ctx.fillStyle = EYE; ctx.lineWidth = u * 0.018; ctx.lineCap = 'round';
+        if (cur.grin > 0.05) {  // ยิ้มกว้างเห็นฟัน
+          const w = u * 0.1;
+          ctx.globalAlpha = Math.min(1, cur.grin * 1.5);
+          ctx.beginPath();
+          ctx.moveTo(cx - w, cy - u * 0.02);
+          ctx.quadraticCurveTo(cx, cy, cx + w, cy - u * 0.02);
+          ctx.quadraticCurveTo(cx, cy + u * 0.1, cx - w, cy - u * 0.02);
+          ctx.fill();
+          ctx.shadowBlur = 0; ctx.strokeStyle = BG; ctx.lineWidth = u * 0.008;
+          ctx.beginPath(); ctx.moveTo(cx - w * 0.6, cy + u * 0.012); ctx.lineTo(cx + w * 0.6, cy + u * 0.012); ctx.stroke();
+        }
+        if (cur.smirk > 0.05) {  // ยิ้มมุมปากข้างเดียว
+          ctx.globalAlpha = Math.min(1, cur.smirk * 1.5);
+          ctx.beginPath();
+          ctx.moveTo(cx - u * 0.06, cy);
+          ctx.quadraticCurveTo(cx + u * 0.02, cy + u * 0.025, cx + u * 0.075, cy - u * 0.03);
+          ctx.stroke();
+        }
+        if (cur.tongue > 0.05) {  // ปากเม้ม แลบลิ้นนิด ๆ
+          ctx.globalAlpha = Math.min(1, cur.tongue * 1.5);
+          ctx.beginPath(); ctx.moveTo(cx - u * 0.05, cy); ctx.lineTo(cx + u * 0.05, cy); ctx.stroke();
+          ctx.beginPath(); ctx.ellipse(cx + u * 0.018, cy, u * 0.025, u * 0.035, 0, 0, Math.PI); ctx.fill();
+        }
+        if (cur.bleh > 0.05) {  // แลบลิ้นยาว ส่ายไปมา มีร่องกลางลิ้น
+          const wag = Math.sin(performance.now() / 1000 * 7) * 0.25;
+          ctx.globalAlpha = Math.min(1, cur.bleh * 1.5);
+          ctx.beginPath(); ctx.moveTo(cx - u * 0.1, cy - u * 0.01); ctx.quadraticCurveTo(cx, cy + u * 0.02, cx + u * 0.1, cy - u * 0.01); ctx.stroke();
+          ctx.save();
+          ctx.translate(cx + u * 0.012, cy + u * 0.004);
+          ctx.rotate(wag);
+          const tl = u * 0.13 * cur.bleh, tw = u * 0.048;
+          ctx.beginPath();
+          ctx.moveTo(-tw, 0);
+          ctx.lineTo(-tw, tl * 0.6);
+          ctx.arc(0, tl * 0.6, tw, Math.PI, 0, true);
+          ctx.lineTo(tw, 0);
+          ctx.fill();
+          ctx.shadowBlur = 0; ctx.strokeStyle = BG; ctx.lineWidth = u * 0.007;
+          ctx.beginPath(); ctx.moveTo(0, u * 0.012); ctx.lineTo(0, tl * 0.6); ctx.stroke();
+          ctx.restore();
+        }
+        ctx.globalAlpha = 1;
       } else if (cur.happy > 0.3) {
         ctx.strokeStyle = EYE; ctx.lineWidth = u * 0.018; ctx.lineCap = 'round';
         ctx.globalAlpha = Math.min(1, (cur.happy - 0.3) * 2);
@@ -311,6 +465,7 @@
       ctx.shadowColor = EYE; ctx.shadowBlur = ew * 0.25 * (window.devicePixelRatio || 1);
       ctx.drawImage(layer, 0, 0);
       ctx.restore();
+      for (const side of [-1, 1]) drawBlush(cx + side * (ew / 2 + gap / 2), cy + eh * 0.5 + u * 0.05, ew, u);
       drawMouth(cx, cy + eh * 0.5 + u * 0.12, u);
       requestAnimationFrame(frame);
     }
@@ -469,12 +624,15 @@
     }
 
     setInterval(() => {
+      // แบตเยอะ (และไม่ได้ชาร์จ): คึก ไม่ง่วงเลย สำรวจได้ตลอด / กำลังเดินสำรวจหรือทำภารกิจ: ไม่ง่วงกลางทาง
+      if (autoKind || (energy && energy.profile().keepAwake && $('#start') === null)) wake();
       const asleep = performance.now() > awakeUntil && !busy && !speaking;
       if (asleep && rec) dropRec();
       // ตัวฟังค้าง: เปิดอยู่แต่เงียบไป 15 วิ (ปกติ Android ปิดเองเร็วกว่านี้) -> เปิดใหม่
       if (rec && performance.now() - recAliveAt > 15000) dropRec('ค้าง เปิดใหม่');
-      if (asleep && emotion === 'neutral') setEmotion('sleepy');
-      if (!asleep && emotion === 'sleepy') setEmotion('neutral');
+      const tired = !!(energy && energy.profile().tired);   // แบตต่ำ: ตาปรือทั้งที่ตื่นอยู่
+      if ((asleep || tired) && emotion === 'neutral') setEmotion('sleepy');
+      if (!asleep && !tired && emotion === 'sleepy' && !showingFaces) setEmotion('neutral');
       listen();
     }, 500);
 
@@ -489,16 +647,24 @@
         res = { say: 'สมองใน Termux ไม่ตอบ ลองเช็กว่ายังรัน brain.py อยู่ไหม', emotion: 'sad' };
       }
       following = !!res.follow;
+      if (window.flyInstinct) { window.flyInstinct.update(res); window.flyInstinct.pause(2500); }  // fly-instinct
       if ('board' in res) setBoard(res.board);
       setEmotion(res.emotion || 'neutral', 4000);
       if (res.script) await runScript(res.script);
+      if (res.faces) await showFaces();
       if (res.sound) await playSound(res.sound);
       if (res.music) playMusicWhileMoving(res.music);  // ไม่รอ: พูดทับเพลงได้
       show(res.say);
       await speak(res.say);
       if (res.echo === false && $('#board').classList.contains('on')) boardTimer = setTimeout(() => setBoard(null), 2500);
       busy = false;
+      lastBusyAt = performance.now();
       wake();
+      if (autoKind && res.auto !== autoKind) autoAbort = true;   // คำสั่งอื่นเลิกภารกิจ/สำรวจที่ทำอยู่
+      if (res.wonderDone) { hideWonder(); if (res.learned) pendingWonders = Math.max(0, pendingWonders - 1); }
+      if (res.personDone) { askingName = false; if (res.met && peopleMod) { peopleMod.met(res.met); greetedAt[res.met] = performance.now(); } }
+      if (res.learnFace) learnFace(res.learnFace);
+      startAuto(res);
     }
 
     // ---------------------------------------------------------------- เสียงพิเศษ: ผิวปาก
@@ -550,7 +716,7 @@
     }
 
     // เล่นไฟล์เสียงอุทาน (ผ่าน voice + analyser ปากจึงขยับตามเสียง)
-    function playFile(url) {
+    function playFile(url, maxMs = 20000) {
       return new Promise(resolve => {
         let done = false;
         const finish = () => { if (done) return; done = true; speaking = false; voice.onended = voice.onerror = null; resolve(); };
@@ -561,7 +727,7 @@
         voice.onerror = () => { report('เล่นไฟล์เสียงไม่ได้: ' + url); finish(); };
         voice.src = url;
         voice.play().catch(e => { report('เล่นไฟล์เสียงไม่ได้: ' + e.name); finish(); });
-        setTimeout(finish, 20000);  // กันค้าง
+        setTimeout(finish, maxMs);  // กันค้าง
         soundNode = { stop: () => { voice.pause(); finish(); } };
       });
     }
@@ -609,6 +775,11 @@
     // สคริปต์แนะนำตัว: แต่ละท่อน สั่งท่า -> พูด -> รอรถทำท่าจบ แล้วค่อยท่อนถัดไป (แตะจอ = เลิกกลางคัน)
     let scriptAbort = false;
     const sleep = ms => new Promise(r => setTimeout(r, ms));
+    async function setFollow(on) {
+      following = on;
+      await fetch('/api/follow', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ on }) }).catch(() => { });
+    }
     async function runScript(steps) {
       scriptAbort = false;
       for (const st of steps) {
@@ -617,10 +788,17 @@
           await fetch('/api/move', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prog: st.prog }) }).catch(() => { });
         }
+        const followEnd = st.follow ? performance.now() + st.follow * 1000 : 0;
+        if (st.follow) await setFollow(true);  // ท่อนหันตามคน: พูดไปพร้อมหันตาม ครบเวลาแล้วปิดเอง
         setEmotion(st.emotion || 'neutral');
         show(st.say);
         if (st.sound) await playSound(st.sound);  // ท่อนอุทานที่มีไฟล์เสียง
         else await speak(st.say);
+        if (st.follow) {
+          while (!scriptAbort && performance.now() < followEnd) await sleep(100);
+          await setFollow(false);
+          if (scriptAbort) return;
+        }
         const t0 = performance.now();
         while (st.prog && !scriptAbort && performance.now() - t0 < 20000) {
           try {
@@ -630,6 +808,29 @@
           await sleep(300);
         }
       }
+      if (!scriptAbort) setEmotion('happy', 2500);
+    }
+
+    // โหมดโชว์สีหน้า ("สีหน้าละกัน"): เปลี่ยนสีหน้าทีละแบบตามตาราง EMO พร้อมชื่อใต้จอ (แตะจอ = เลิกกลางคัน)
+    // ไม่พูดชื่อออกเสียง เพราะตอนพูดปากจะเปลี่ยนเป็นปากพูด บังปากของสีหน้านั้น
+    const FACE_NAMES = {
+      neutral: 'ปกติ', happy: 'ดีใจ', sad: 'เศร้า', angry: 'โกรธ', surprised: 'ตกใจ',
+      thinking: 'กำลังคิด', listening: 'ตั้งใจฟัง', confused: 'งง', sleepy: 'ง่วง',
+      excited: 'ตื่นเต้น', smug: 'ภูมิใจ', shy: 'เขิน', focus: 'ตั้งใจสุด ๆ', love: 'หลงรัก', mischief: 'เจ้าเล่ห์', tease: 'แลบลิ้นกวนโอ้ย',
+    };
+    let showingFaces = false;  // กันตัวจับเวลาหลับ/ตื่นเปลี่ยนหน้า ง่วง ทิ้งระหว่างโชว์
+    async function showFaces() {
+      scriptAbort = false;
+      showingFaces = true;
+      const names = Object.keys(EMO);
+      for (let i = 0; i < names.length && !scriptAbort; i++) {
+        const name = names[i];
+        setEmotion(name);
+        show(`${FACE_NAMES[name] || name} (${name}) · ${i + 1}/${names.length}`);
+        await sleep(2500);
+      }
+      showingFaces = false;
+      show('');
       if (!scriptAbort) setEmotion('happy', 2500);
     }
 
@@ -647,18 +848,61 @@
       try {
         const s = await (await fetch('/api/state')).json();
         $('#dot').classList.toggle('on', s.online);
-        $('#stat').textContent = s.online ? 'ล้อพร้อม' : 'ยังไม่เจอล้อ (ESP8266)';
+        $('#stat').textContent = (s.online ? 'ล้อพร้อม' : 'ยังไม่เจอล้อ (ESP8266)') +
+          (energy && energy.percent !== null ? ` · แบต ${energy.percent}%${energy.charging ? ' ⚡' : ''}` : '');
+        pendingWonders = s.wonders || 0;
         window.robotName = s.name;
         following = !!s.follow;
+        if (window.flyInstinct) window.flyInstinct.update(s);  // fly-instinct
+        exploreAllowed = !!s.explore;
+        if (autoKind && s.auto !== autoKind) autoAbort = true;  // brain.py ยกเลิกแล้ว (เช่น คนดูทางไกลกดหยุด)
         if (!s.echo && $('#board').classList.contains('on') && !busy) setBoard(null);  // หมดเวลาพูดตามเอง
         const btn = $('#start');
         if (btn) btn.firstChild.textContent = 'แตะเพื่อปลุก' + s.name;
+        viewer = !!s.viewer;
+        if (lastVoice < 0) lastVoice = s.voice;  // เปิดหน้าใหม่ ไม่เล่นเสียงเก่าที่ค้างอยู่
+        else if (s.voice > lastVoice && !$('#start')) playRemoteVoices();
       } catch (_) {
         $('#dot').classList.remove('on');
         $('#stat').textContent = 'สมองไม่ตอบ (brain.py)';
       }
+      setTimeout(poll, viewer ? 700 : 3000);  // มีคนดูทางไกลอยู่ เช็กเสียงถี่ขึ้น
     }
-    poll(); setInterval(poll, 3000);
+    poll();
+
+    // ---------------------------------------------------------------- ควบคุมทางไกล (/remote)
+    // มีคนดูอยู่ -> ส่งภาพกล้องไปให้ brain.py / คนดูพูดผ่านไมค์ -> ดึงคลิปมาเล่นออกลำโพง (ปากขยับตาม)
+    let viewer = false, lastVoice = -1, voicePlaying = false, lastFrame = 0;
+    const shotCv = document.createElement('canvas');
+    shotCv.width = 320; shotCv.height = 240;
+
+    function sendFrame(now) {
+      if (!viewer || now - lastFrame < 200 || video.readyState < 2) return;
+      lastFrame = now;
+      shotCv.getContext('2d').drawImage(video, 0, 0, shotCv.width, shotCv.height);
+      shotCv.toBlob(b => {
+        if (b) fetch('/api/frame', { method: 'POST', headers: { 'Content-Type': 'image/jpeg' }, body: b }).catch(() => { });
+      }, 'image/jpeg', 0.6);
+    }
+
+    async function playRemoteVoices() {
+      if (voicePlaying) return;
+      voicePlaying = true;
+      try {
+        for (;;) {
+          const r = await fetch('/api/voice?after=' + lastVoice);
+          if (r.status !== 200) break;
+          lastVoice = +r.headers.get('X-Voice-Id');
+          const url = URL.createObjectURL(await r.blob());
+          stopSpeaking();
+          dropRec();  // ไม่ฟังตอนเสียงคนดูดังออกลำโพง กันแซนได้ยินแล้วทำตามเอง
+          setEmotion('happy');
+          await playFile(url, 150000);  // คลิปคนดูยาวได้ถึง ~2 นาที
+          URL.revokeObjectURL(url);
+        }
+      } catch (e) { report('เล่นเสียงคนดูไม่ได้: ' + e); }
+      voicePlaying = false;
+    }
 
     // ---------------------------------------------------------------- เริ่ม
     let wakeLock = null;
@@ -678,12 +922,16 @@
       show(hi);
       if (!SR) show('Chrome นี้ฟังเสียงไม่ได้ ลองอัปเดต Chrome');
       startEyes();
+      startInstinct();  // fly-instinct
+      startEnergy();
+      startPeople();
       await speak(hi);
     });
 
     // ---------------------------------------------------------------- ตา: กล้องหน้า + MediaPipe จับหน้า
     // ตามองตามหน้าคนตลอด / โหมดตาม (พูด "ตามมา") ส่งตำแหน่งหน้าให้ brain.py สั่งล้อ
     let following = false, faceSeenAt = -1e9, lastTrack = 0;
+    let camView = null;   // ภารกิจ/สอนจำของ: โชว์ภาพกล้องมุมจอ ({ rect, hit } = กรอบที่จะวาด)
     const video = document.createElement('video');
     video.muted = true; video.playsInline = true;
     const camCv = $('#cam'), camCtx = camCv.getContext('2d');
@@ -739,25 +987,333 @@
               body: JSON.stringify({ found, x, w })
             }).catch(() => { });
           }
-          camCv.classList.toggle('on', following);
-          if (following) {
+          camCv.classList.toggle('on', following || !!camView);
+          if (following || camView) {
             camCtx.drawImage(video, 0, 0, camCv.width, camCv.height);
-            if (found) {
+            if (camView && camView.rect) {  // ช่องที่ภารกิจคิดว่าคล้ายของที่สุด (เขียว = ใช่, เทา = ยังไม่ใช่)
+              const r = camView.rect, sx = camCv.width / vw, sy = camCv.height / vh;
+              camCtx.strokeStyle = camView.hit ? '#3ddc84' : '#888'; camCtx.lineWidth = 2;
+              camCtx.strokeRect(r.x * sx, r.y * sy, r.w * sx, r.h * sy);
+            }
+            if (found && following) {
               const b = best.boundingBox, sx = camCv.width / vw, sy = camCv.height / vh;
               camCtx.strokeStyle = EYE; camCtx.lineWidth = 2;
               camCtx.strokeRect(b.originX * sx, b.originY * sy, b.width * sx, b.height * sy);
             }
           }
         }
+        sendFrame(now);
         requestAnimationFrame(tick);
       };
       requestAnimationFrame(tick);
     }
 
+    // fly-instinct: สมองแมลงวันจิ๋วคุมการเหลือบตาตอนว่าง (โค้ดอยู่ใน phone/fly/) โหลดไม่ได้ก็ไม่เป็นไร แซนทำงานแบบเดิม
+    const CURIOUS_LINES = ['นั่นอะไรน่ะ', 'หืม อันนี้ไม่เคยเห็นเลย', 'ของใหม่นี่นา'];
+    const CURIOUS_SAY_GAP = 5 * 60000;   // พูดถามได้อย่างมากทุก 5 นาที (ตาโตอยากรู้ได้ทุกครั้ง)
+    let curiousSaidAt = -1e9;
+    async function instinctMove(url, body) {   // ขอ brain.py ขยับล้อ (brain.py ตัดสินว่าทำได้ไหม)
+      try {
+        const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+        return !!(await r.json()).ok;
+      } catch (_) { return false; }
+    }
+    async function startInstinct() {
+      try {
+        const { createInstinct } = await import('/fly/instinct.js');
+        window.flyInstinct = await createInstinct({
+          video, report,
+          // สอนจำของ / ภารกิจ ใช้กล้องเต็มที่ สัญชาตญาณพักก่อน (ตอนเดินสำรวจยังทำงาน ช่วยเลือกทิศ)
+          canRun: () => performance.now() < awakeUntil && !busy && !following && !showingFaces &&
+            (!autoKind || autoKind === 'explore'),
+          // หันตัวเฉพาะตอนไม่เห็นหน้าใครมา 3 วิ และไม่ได้พูดอยู่ (ถ้ามีคนอยู่ ของที่ขยับก็มักเป็นคนนั้นเอง)
+          canTurn: () => performance.now() - faceSeenAt > 3000 && !speaking && !autoKind && wheelsOk(),
+          onTurn: (dir, deg) => instinctMove('/api/instinct/turn', { dir, deg }),
+          // ของที่ไม่เคยเห็น: ตาโตอยากรู้ ตาเหลือบไปเอง (สมองแมลงวันคุม) นาน ๆ ทีพูดถามด้วย
+          onCurious: side => {
+            maybeWonder(side);
+            if (busy || speaking || emotion !== 'neutral') return;
+            setEmotion('listening', 2000);
+            const now = performance.now();
+            if (now - curiousSaidAt < CURIOUS_SAY_GAP) return;
+            curiousSaidAt = now;
+            const line = CURIOUS_LINES[Math.floor(Math.random() * CURIOUS_LINES.length)];
+            show(line);
+            speak(line);
+          },
+          // ของพุ่งเข้าหา: ทำหน้าตกใจเสมอ ถอยหลังเฉพาะตอนไม่เห็นหน้าใคร (คนโน้มเข้ามาคุยด้วย ไม่ต้องหนี)
+          onStartle: () => {
+            if (busy) return;
+            setEmotion('surprised', 1500);
+            if (performance.now() - faceSeenAt > 1000 && !following && wheelsOk()) instinctMove('/api/instinct/startle', {});
+          },
+        });
+      } catch (e) { report('สัญชาตญาณเปิดไม่ได้: ' + (e.message || e)); }
+    }
+
+    // ---------------------------------------------------------------- สำรวจ / สอนจำของ / ภารกิจหาของ / สงสัย (phone/fly/, phone/mission.py)
+    // นิสัยเรื่องเบื่อ พัก และจำนวนก้าว มาจากแบต (fly/energy.js) แบตไม่รู้ = ปกติ
+    const NORMAL = { explore: true, boredMs: 20000, restMs: 60000, steps: 10, wonder: true, wheels: true };
+    const WONDER_GAP = 120000;   // สงสัยของใหม่แล้วไปดูได้อย่างมากทุก 2 นาที
+    const ASK_GAP = 90000;       // เห็นคนแล้วถามข้อสงสัยได้อย่างมากทุก 1.5 นาที
+    const ASK_WAIT = 60000;      // โชว์รูปรอคำตอบนานเท่านี้
+    const PLEAD_GAP = 120000;    // แบตใกล้หมด อ้อนขอชาร์จทุก 2 นาที (เมื่อเห็นคน)
+    const GRUMBLE_GAP = 240000;  // แบตต่ำ บ่นเหนื่อยทุก 4 นาที
+    const PLEAD_LINES = ['แบตแซนจะหมดแล้ว ช่วยเสียบชาร์จให้หน่อยนะ', 'หิวไฟจังเลย ขอชาร์จหน่อยได้ไหม', 'ง่วงมาก แบตใกล้หมดแล้ว ชาร์จให้แซนหน่อยน้า'];
+    const GRUMBLE_LINES = ['เหนื่อยจัง', 'แบตเหลือน้อยแล้ว ง่วงจัง', 'เฮ้อ ไม่ค่อยมีแรงเลย'];
+    let autoKind = null, autoAbort = false, exploreAllowed = false, lastBusyAt = 0, lastExploreAt = -1e9;
+    let energy = null, pendingWonders = 0, lastWonderAt = -1e9, lastAskAt = -1e9, lastPleadAt = -1e9, lastGrumbleAt = -1e9;
+    let wonderTimer = 0, motion = null;
+    const pick = xs => xs[Math.floor(Math.random() * xs.length)];
+    const profile = () => (energy ? energy.profile() : NORMAL);
+    const wheelsOk = () => profile().wheels;   // เสียบชาร์จอยู่ ห้ามขยับล้อเอง
+
+    async function getMotion() {
+      if (!motion) {
+        const { createMotion } = await import('/fly/motion.js');
+        motion = createMotion({ video, report, onMoving: on => window.flyInstinct && window.flyInstinct.hold(on) });
+      }
+      return motion;
+    }
+
+    async function startEnergy() {
+      try {
+        const { createEnergy } = await import('/fly/energy.js');
+        energy = await createEnergy({ report, onChange: onEnergy });
+      } catch (e) { report('อ่านแบตไม่ได้: ' + (e.message || e)); }
+    }
+
+    // แบตเปลี่ยนขั้น หรือเพิ่งเสียบ/ถอดสายชาร์จ
+    async function onEnergy(state, prev, chargingChanged) {
+      if (chargingChanged && energy.charging) {
+        autoAbort = true;   // เสียบสายแล้ว เลิกเดิน (สายจะกระชาก)
+        if (['low', 'tired', 'empty'].includes(state) && !busy) {
+          setEmotion('love', 3000);
+          show('ขอบคุณนะ ได้ชาร์จแบตแล้ว');
+          await speak('ขอบคุณนะ ได้ชาร์จแบตแล้ว');
+        }
+      }
+      if (state === 'empty' && prev !== 'empty') lastPleadAt = -1e9;   // เพิ่งใกล้หมด เห็นคนเมื่อไรอ้อนเลย
+      if (state === 'tired' && prev !== 'tired' && prev !== 'empty') lastGrumbleAt = -1e9;
+    }
+
+    async function startAuto(res) {
+      if (res.autoStop) { autoAbort = true; return; }
+      const kind = res.teach ? 'teach' : res.mission ? 'mission' : res.explore ? 'explore' : res.wonder ? 'wonder' : null;
+      if (!kind) return;
+      while (autoKind) { autoAbort = true; await sleep(100); }   // งานเก่ายังไม่จบ รอให้หยุดก่อน
+      autoKind = kind; autoAbort = false;
+      try {
+        if ((kind === 'mission' || kind === 'explore') && !(await readyToMove(kind, !!res.bored))) return;
+        if (kind === 'teach') await runTeach(res.teach);
+        else if (kind === 'mission') await runMission(res.mission);
+        else if (kind === 'wonder') await runWonder(res.wonder);
+        else await runExplore(!!res.bored);
+      } catch (e) {
+        report(kind + ' พัง: ' + (e.message || e));
+        if (kind !== 'wonder') show('แย่จัง ' + (kind === 'explore' ? 'สำรวจ' : 'ภารกิจ') + 'สะดุด: ' + (e.message || e));
+        endAuto(kind);
+      } finally {
+        autoKind = null; camView = null;
+        if (kind === 'explore') lastExploreAt = performance.now();
+      }
+    }
+    const endAuto = (kind, found = false) => fetch('/api/auto/end', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, found })
+    }).catch(() => { });
+
+    // ก่อนออกเดิน: เสียบชาร์จอยู่ = ไปไม่ได้, แบตต่ำ = บ่นก่อน (ใกล้หมด = ไม่ยอมสำรวจ)
+    async function readyToMove(kind, bored) {
+      const p = profile(), st = energy ? energy.state : 'ok';
+      let line = null, go = true;
+      if (!p.wheels) { line = 'เสียบชาร์จอยู่ แซนเดินไม่ได้นะ ถอดสายก่อน'; go = false; }
+      else if (kind === 'explore' && !bored && (st === 'tired' || st === 'empty')) { line = 'แบตจะหมดแล้ว ขอไม่สำรวจนะ ชาร์จให้ก่อนได้ไหม'; go = false; }
+      else if (!bored && (st === 'low' || st === 'tired' || st === 'empty')) line = 'แบตเหลือน้อยแล้ว แต่จะพยายามนะ';
+      if (line) { setEmotion(go ? 'sleepy' : 'sad', 3000); show(line); await speak(line); }
+      if (!go) endAuto(kind);
+      return go;
+    }
+
+    async function runTeach(name) {
+      const { teach } = await import('/fly/mission.js');
+      camView = { rect: null };
+      const res = await teach({
+        name, video, report, shouldStop: () => autoAbort,
+        onProgress: p => { wake(); show(`กำลังจำ${name} ${Math.round(p * 100)}%`); },
+      });
+      if (!res.ok) return;
+      const line = res.clear ? `จำ${name}ได้แล้ว` : `จำ${name}ได้แล้ว แต่ภาพยังคล้ายฉากรอบ ๆ อยู่ ถ้าหาไม่เจอลองสอนใหม่ ถือให้ใกล้กว่านี้นะ`;
+      setEmotion(res.clear ? 'excited' : 'thinking', 3000);
+      show(line);
+      await speak(line);
+    }
+
+    async function runMission(item) {
+      const { findItem } = await import('/fly/mission.js');
+      const m = await getMotion();
+      camView = { rect: null };
+      const res = await findItem({
+        item, video, motion: m, report, shouldStop: () => autoAbort,
+        onSee: (seen, hit) => {
+          wake();   // ภารกิจยังไม่จบ อย่าเพิ่งง่วง (ไมค์เปิดไว้ฟังคำว่า "หยุด")
+          camView = { rect: seen.rect, hit };
+          if (hit && emotion === 'neutral') setEmotion('listening', 1200);
+        },
+      });
+      await m.end('mission', res.found);
+      if (res.why === 'stopped' || res.why === 'cancelled') return;
+      // เจอแล้วหยุดทันที บอกด้วยว่าของอยู่ทางไหนของแซน
+      const where = res.found && (res.seen.x < -0.3 ? 'ทางซ้าย' : res.seen.x > 0.3 ? 'ทางขวา' : 'ตรงหน้า');
+      const line = res.found ? `เจอ${item.name}แล้ว อยู่${where} ภารกิจสำเร็จ`
+        : res.why === 'offline' ? 'ติดต่อล้อไม่ได้ ภารกิจต้องหยุดก่อน' : `หา${item.name}ไม่เจอเลย ขอโทษนะ`;
+      setEmotion(res.found ? 'excited' : 'sad', 4000);
+      if (res.found) { camView = { rect: res.seen.rect, hit: true }; await playSound({ type: 'file', url: '/sounds/yay.mp3' }); }
+      show(line);
+      await speak(line);
+    }
+
+    async function runExplore(bored) {
+      const { explore } = await import('/fly/explore.js');
+      const m = await getMotion();
+      const res = await explore({
+        motion: m, steps: profile().steps || NORMAL.steps,
+        // ออกสำรวจเองเพราะเบื่อ: เห็นคนแล้วเลิก (คนสั่ง "ไปสำรวจ" เอง อยู่หน้ากล้องอยู่แล้ว ไม่ต้องเลิก)
+        shouldStop: () => autoAbort || (bored && performance.now() - faceSeenAt < 1000),
+        lean: () => (window.flyInstinct ? window.flyInstinct.lean() : 0),
+        onEvent: ev => {
+          if (ev === 'bump') { setEmotion('surprised', 1200); show('อุ๊ย ชน'); }
+          if (ev === 'curious' && emotion === 'neutral') setEmotion('listening', 1500);
+        },
+      });
+      report(`สำรวจ: ${res.steps} ก้าว ชน ${res.bumps} ครั้ง${res.stopped ? ' (หยุดเพราะ ' + res.stopped + ')' : ''}`);
+    }
+
+    // โหมดสงสัย: ความอยากรู้เจอของใหม่ -> ขอ brain.py ไปดู -> จดจำ + ถ่ายรูปเก็บไว้ถาม
+    async function maybeWonder(side) {
+      const now = performance.now();
+      if (autoKind || busy || following || !profile().wonder || pendingWonders >= 3 || now - lastWonderAt < WONDER_GAP) return;
+      lastWonderAt = now;
+      try {
+        const r = await fetch('/api/auto/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"kind":"wonder"}' });
+        if ((await r.json()).ok) startAuto({ wonder: side });
+      } catch (_) { }
+    }
+
+    async function runWonder(side) {
+      const { wonder } = await import('/fly/wonder.js');
+      const m = await getMotion();
+      setEmotion('listening', 3000);
+      show('หืม นั่นอะไรน่ะ ขอดูหน่อย');
+      const res = await wonder({ video, motion: m, side, canMove: wheelsOk(), report, shouldStop: () => autoAbort });
+      if (!res.ok) endAuto('wonder');
+      else pendingWonders++;
+    }
+
+    // เห็นคน: โชว์รูปข้อสงสัยแล้วถาม (คำตอบไปที่ brain.py ผ่าน /api/hear ตามปกติ)
+    async function askWonder() {
+      lastAskAt = performance.now();
+      let w;
+      try { w = await (await fetch('/api/wonder/next', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).json(); }
+      catch (_) { return; }
+      if (!w || !w.photo) return;
+      $('#wonder img').src = w.photo;
+      $('#wonder').classList.add('on');
+      clearTimeout(wonderTimer);
+      wonderTimer = setTimeout(hideWonder, ASK_WAIT);
+      wake();
+      setEmotion('listening', 4000);
+      const line = pick(['อันนี้คืออะไรเหรอ', 'แซนเจออันนี้มา มันคืออะไรเหรอ', 'สงสัยจัง อันนี้เรียกว่าอะไร']);
+      show(line);
+      await speak(line);
+    }
+    function hideWonder() { clearTimeout(wonderTimer); $('#wonder').classList.remove('on'); }
+
+    // ---------------------------------------------------------------- จำหน้าคน (fly/people.js, people.py)
+    const GREET_GAP = 10 * 60000;      // ทักคนเดิมซ้ำได้ทุก 10 นาที
+    const ASK_NAME_GAP = 3 * 60000;    // ถามชื่อคนแปลกหน้าได้อย่างมากทุก 3 นาที
+    const GREET_LINES = [n => `สวัสดี${n}`, n => `อ้าว ${n} มาแล้ว`, n => `หวัดดี${n} วันนี้เป็นไงบ้าง`, n => `${n} คิดถึงจัง`];
+    let peopleMod = null, greetedAt = {}, lastAskNameAt = -1e9, askingName = false;
+    const freeToTalk = () => !autoKind && !busy && !speaking && !following && !showingFaces && !$('#wonder').classList.contains('on');
+
+    async function startPeople() {
+      try {
+        const { createPeople } = await import('/fly/people.js');
+        peopleMod = await createPeople({
+          video, report,
+          faceVisible: () => performance.now() - faceSeenAt < 800,
+          canLook: () => !autoKind || autoKind === 'explore',   // สอนจำของ/ภารกิจใช้เครื่องเต็มที่ พักก่อน
+          onSeen: name => {
+            const now = performance.now();
+            if (now - (greetedAt[name] || -1e9) < GREET_GAP || !freeToTalk()) return;
+            greetedAt[name] = now;
+            const line = pick(GREET_LINES)(name);
+            wake(); setEmotion('love', 2500); show(line); speak(line);
+          },
+          onStranger: async vectors => {
+            const now = performance.now();
+            if (askingName || now - lastAskNameAt < ASK_NAME_GAP || !freeToTalk() || profile().plead) return;
+            lastAskNameAt = now;
+            const r = await fetch('/api/people/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ vectors }) });
+            if (!(await r.json()).ok) return;
+            askingName = true;
+            setTimeout(() => { askingName = false; }, 60000);
+            const line = pick(['สวัสดี แซนยังไม่รู้จักเลย ชื่ออะไรเหรอ', 'หวัดดี เราไม่เคยเจอกันเลยนะ ชื่ออะไรเหรอ', 'สวัสดีคนใหม่ ชื่ออะไรเหรอ']);
+            wake(); setEmotion('shy', 3000); show(line); speak(line);
+          },
+        });
+      } catch (e) { report('จำหน้าเปิดไม่ได้: ' + (e.message || e) + ' (ลองรัน get_vendor.sh)'); }
+    }
+
+    // "ผมชื่อ..." -> เก็บหน้าคนตรงหน้าแล้วจำ
+    async function learnFace(name) {
+      if (!peopleMod) { show('ยังจำหน้าไม่ได้ ตัวจำหน้ายังไม่พร้อม'); return; }
+      const ok = await peopleMod.learn(name);
+      greetedAt[name] = performance.now();
+      const line = ok ? `จำหน้า${name}ได้แล้ว ยินดีที่ได้รู้จักนะ` : 'แซนมองไม่ค่อยเห็นหน้าเลย มาใกล้ ๆ แล้วบอกชื่ออีกทีนะ';
+      setEmotion(ok ? 'love' : 'confused', 3000); show(line); await speak(line);
+    }
+
+    setInterval(async () => {
+      const now = performance.now(), p = profile();
+      const free = !autoKind && !busy && !speaking && !following && !showingFaces && now < awakeUntil;
+      const person = now - faceSeenAt < 1500;
+      // แบตใกล้หมด: เห็นคนแล้วอ้อนขอชาร์จ (แทนการถามข้อสงสัย)
+      if (free && person && p.plead && now - lastPleadAt > PLEAD_GAP) {
+        lastPleadAt = now;
+        const line = pick(PLEAD_LINES);
+        setEmotion('sad', 4000); show(line); speak(line);
+        return;
+      }
+      if (free && person && !p.plead && !askingName && pendingWonders > 0 && !$('#wonder').classList.contains('on') && now - lastAskAt > ASK_GAP) {
+        askWonder();
+        return;
+      }
+      // แบตต่ำ: บ่นเหนื่อยเป็นพัก ๆ
+      if (free && p.tired && now - lastGrumbleAt > GRUMBLE_GAP) {
+        lastGrumbleAt = now;
+        const line = pick(GRUMBLE_LINES);
+        setEmotion('sleepy', 3000); show(line); speak(line);
+        return;
+      }
+      // เบื่อแล้ว: ตื่นอยู่ ว่าง ไม่มีใครคุยหรือเห็นหน้ามานานพอ -> ขอ brain.py ออกสำรวจ (นานแค่ไหนขึ้นกับแบต)
+      if (!free || !exploreAllowed || !window.flyInstinct || !p.explore || !p.wheels ||
+        now - faceSeenAt < p.boredMs || now - lastBusyAt < p.boredMs || now - lastExploreAt < p.restMs) return;
+      lastExploreAt = now;
+      try {
+        const r = await fetch('/api/auto/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"kind":"explore"}' });
+        if ((await r.json()).ok) {
+          show(energy && energy.state === 'full' ? 'แบตเต็มเลย ไปสำรวจกัน' : 'เบื่อจัง ไปสำรวจดีกว่า');
+          setEmotion('mischief', 1500);
+          startAuto({ explore: true, bored: true });
+        }
+      } catch (_) { }
+    }, 1000);
+
     // แตะหน้าจอ = หยุดรถทันที
     cv.addEventListener('pointerdown', () => {
       following = false;
       scriptAbort = true;
+      autoAbort = true;
       stopSound();
       stopMusic();
       setBoard(null);
